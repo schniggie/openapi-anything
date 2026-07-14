@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% if jobs_active %}
+    <meta http-equiv="refresh" content="5">
+    {% endif %}
+    <title>{{ title }}</title>
+    <style>
+        :root {
+            --paper: #F1F5F6;
+            --panel: #FCFEFE;
+            --ink: #16262E;
+            --muted: #5B707A;
+            --line: #C9D6DB;
+            --accent: #D64510;
+            --ok: #177245;      --ok-bg: #E4F3EA;
+            --busy: #9A6A00;    --busy-bg: #FBF0D9;
+            --bad: #BB2B16;     --bad-bg: #FBE7E2;
+            --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+            --sans: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: var(--sans);
+            font-size: 15px;
+            line-height: 1.55;
+        }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        .wrap { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 4rem; }
+
+        /* ---- header: terminal strip ---- */
+        .masthead {
+            border-top: 6px solid var(--accent);
+            border-bottom: 1px solid var(--line);
+            background: var(--panel);
+        }
+        .masthead-inner {
+            max-width: 1000px; margin: 0 auto; padding: 1.1rem 1.25rem;
+            display: flex; align-items: baseline; justify-content: space-between;
+            gap: 1rem; flex-wrap: wrap;
+        }
+        .brand {
+            font-family: var(--mono);
+            font-size: 1.05rem; font-weight: 700;
+            letter-spacing: 0.14em; text-transform: uppercase;
+        }
+        .brand .tick { color: var(--accent); }
+        .gateway-stat {
+            font-family: var(--mono); font-size: 0.8rem; color: var(--muted);
+            letter-spacing: 0.06em;
+        }
+        .gateway-stat b { color: var(--ink); font-weight: 700; }
+
+        .lede {
+            margin: 2.2rem 0 0;
+            font-size: 1.45rem; font-weight: 650; line-height: 1.3;
+            max-width: 34ch;
+        }
+        .lede-sub { color: var(--muted); margin: 0.4rem 0 0; max-width: 62ch; }
+
+        /* ---- sections ---- */
+        section { margin-top: 2.75rem; }
+        .eyebrow {
+            font-family: var(--mono); font-size: 0.78rem; font-weight: 700;
+            letter-spacing: 0.18em; text-transform: uppercase;
+            color: var(--muted);
+            display: flex; align-items: baseline; gap: 0.75rem;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 0.5rem; margin-bottom: 1rem;
+        }
+        .eyebrow .verb { color: var(--accent); }
+        .eyebrow .aside { margin-left: auto; font-weight: 400; letter-spacing: 0.04em; text-transform: none; }
+
+        /* ---- response-line notice ---- */
+        .notice {
+            margin-top: 1.6rem;
+            font-family: var(--mono); font-size: 0.85rem;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-left: 4px solid var(--busy);
+            padding: 0.7rem 1rem;
+            overflow-wrap: anywhere;
+        }
+        .notice .code { color: var(--busy); font-weight: 700; margin-right: 0.6rem; }
+
+        /* ---- request composer ---- */
+        .composer {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            padding: 1.25rem;
+        }
+        label {
+            display: block;
+            font-family: var(--mono); font-size: 0.75rem;
+            letter-spacing: 0.08em; color: var(--muted);
+            margin-bottom: 0.35rem;
+        }
+        textarea, input[type="text"] {
+            width: 100%;
+            font-family: var(--mono); font-size: 0.9rem;
+            color: var(--ink);
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 0;
+            padding: 0.65rem 0.75rem;
+        }
+        textarea { resize: vertical; min-height: 5.5rem; }
+        textarea:focus, input[type="text"]:focus { border-color: var(--accent); outline: none; }
+        .composer-row {
+            display: flex; gap: 1rem; align-items: flex-end; margin-top: 1rem; flex-wrap: wrap;
+        }
+        .composer-row .field { flex: 1 1 260px; }
+        button {
+            font-family: var(--mono); font-size: 0.85rem; font-weight: 700;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            background: var(--accent); color: #fff;
+            border: none; border-radius: 0;
+            padding: 0.75rem 1.4rem;
+            cursor: pointer;
+        }
+        button:hover { background: #B93A0C; }
+        .btn-quiet {
+            background: transparent; color: var(--bad);
+            border: 1px solid var(--bad);
+            padding: 0.3rem 0.7rem; font-size: 0.72rem;
+        }
+        .btn-quiet:hover { background: var(--bad-bg); }
+
+        /* ---- ledgers (jobs + registry) ---- */
+        .scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); }
+        table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+        th, td {
+            text-align: left; vertical-align: top;
+            padding: 0.6rem 0.9rem;
+            border-bottom: 1px solid var(--line);
+        }
+        tr:last-child td { border-bottom: none; }
+        th {
+            font-family: var(--mono); font-size: 0.7rem; font-weight: 700;
+            letter-spacing: 0.14em; text-transform: uppercase;
+            color: var(--muted);
+            border-bottom: 1px solid var(--ink);
+        }
+        td.mono, .mono { font-family: var(--mono); font-size: 0.82rem; }
+        td .dim { color: var(--muted); }
+
+        /* ---- HTTP status chips ---- */
+        .chip {
+            font-family: var(--mono); font-size: 0.75rem; font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 0.15rem 0.5rem;
+            white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 0.4rem;
+        }
+        .chip-ok   { color: var(--ok);   background: var(--ok-bg); }
+        .chip-busy { color: var(--busy); background: var(--busy-bg); }
+        .chip-bad  { color: var(--bad);  background: var(--bad-bg); }
+        .pulse {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--busy);
+            animation: pulse 1.2s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+        @media (prefers-reduced-motion: reduce) {
+            .pulse { animation: none; }
+        }
+
+        .empty {
+            background: var(--panel); border: 1px dashed var(--line);
+            padding: 1.4rem; color: var(--muted); font-size: 0.9rem;
+        }
+
+        footer {
+            margin-top: 4rem; padding-top: 1rem;
+            border-top: 1px solid var(--line);
+            font-family: var(--mono); font-size: 0.72rem;
+            color: var(--muted); letter-spacing: 0.05em;
+        }
+
+        @media (max-width: 640px) {
+            .lede { font-size: 1.2rem; }
+            th, td { padding: 0.5rem 0.6rem; }
+        }
+    </style>
+</head>
+<body>
+    <header class="masthead">
+        <div class="masthead-inner">
+            <div class="brand">openapi<span class="tick">—</span>anything</div>
+            <div class="gateway-stat">gateway <b>·</b> {{ wrappers | length }} wrapper{{ '' if wrappers | length == 1 else 's' }} deployed{% if jobs_active %} <b>·</b> building&hellip;{% endif %}</div>
+        </div>
+    </header>
+
+    <div class="wrap">
+        <h1 class="lede">Describe anything. Get a live REST API.</h1>
+        <p class="lede-sub">The gateway inspects the target, designs endpoints, generates and tests the code,
+        then deploys it in its own container — each wrapper serves its own <span class="mono">openapi.json</span>.</p>
+
+        {% if message %}
+        <div class="notice" role="status">
+            <span class="code">202</span>{{ message }}
+        </div>
+        {% endif %}
+
+        <section>
+            <div class="eyebrow">
+                <span><span class="verb">POST</span> /generate</span>
+                <span class="aside">plain English in, endpoints out</span>
+            </div>
+            <form class="composer" action="/generate" method="post">
+                <label for="description">description — what should this wrapper connect to?</label>
+                <textarea id="description" name="description" rows="4"
+                    placeholder="wrap the ls CLI command as a REST API" required></textarea>
+                <div class="composer-row">
+                    <div class="field">
+                        <label for="wrapper_id">wrapper_id — optional, auto-assigned if blank</label>
+                        <input type="text" id="wrapper_id" name="wrapper_id" placeholder="my-ls-wrapper-v1">
+                    </div>
+                    <button type="submit">Generate wrapper</button>
+                </div>
+            </form>
+        </section>
+
+        {% if jobs %}
+        <section>
+            <div class="eyebrow">
+                <span><span class="verb">GET</span> /jobs</span>
+                {% if jobs_active %}<span class="aside">refreshes every 5&thinsp;s while building</span>{% endif %}
+            </div>
+            <div class="scroll">
+            <table>
+                <tr>
+                    <th>Status</th>
+                    <th>Job</th>
+                    <th>Wrapper</th>
+                    <th>Target</th>
+                    <th>Outcome</th>
+                </tr>
+                {% for j in jobs %}
+                <tr>
+                    <td>
+                        {% if j.status == 'completed' %}
+                        <span class="chip chip-ok">200 completed</span>
+                        {% elif j.status == 'failed' %}
+                        <span class="chip chip-bad">500 failed</span>
+                        {% elif j.status == 'cancelled' %}
+                        <span class="chip chip-bad">499 cancelled</span>
+                        {% else %}
+                        <span class="chip chip-busy"><span class="pulse"></span>202 {{ j.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono">{{ j.id }}</td>
+                    <td class="mono">{{ j.wrapper_id }}</td>
+                    <td>{{ j.description }}</td>
+                    <td class="mono">
+                        {% if j.status == 'completed' %}
+                        <a href="/services/{{ j.wrapper_id }}/">/services/{{ j.wrapper_id }}/</a>
+                        {% elif j.status == 'failed' %}
+                        <span class="dim">{{ j.error }}</span>
+                        {% elif j.status == 'cancelled' %}
+                        <span class="dim">{{ j.error }}</span>
+                        {% else %}
+                        <span class="dim">{{ j.phase or 'starting' }}&hellip;</span>
+                        <form action="/jobs/{{ j.id }}/cancel/form" method="post" style="display:inline; margin-left:0.5rem;">
+                            <button type="submit" class="btn-quiet">Cancel</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            </div>
+        </section>
+        {% endif %}
+
+        <section>
+            <div class="eyebrow">
+                <span><span class="verb">GET</span> /registry</span>
+                <span class="aside">one container per wrapper, isolated</span>
+            </div>
+            {% if wrappers %}
+            <div class="scroll">
+            <table>
+                <tr>
+                    <th>Status</th>
+                    <th>Wrapper</th>
+                    <th>Target</th>
+                    <th>Endpoints</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+                {% for w in wrappers %}
+                <tr>
+                    <td>
+                        {% if w.status == 'healthy' %}
+                        <span class="chip chip-ok">200 healthy</span>
+                        {% elif w.status == 'degraded' %}
+                        <span class="chip chip-busy">206 degraded</span>
+                        {% else %}
+                        <span class="chip chip-bad">503 {{ w.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono">{{ w.id }}</td>
+                    <td>{{ w.target_description }}</td>
+                    <td class="mono">
+                        <a href="/services/{{ w.id }}/">index</a> ·
+                        <a href="/services/{{ w.id }}/openapi.json">openapi.json</a> ·
+                        <a href="/services/{{ w.id }}/docs">docs</a> ·
+                        <a href="/services/{{ w.id }}/_logs">logs</a> ·
+                        <a href="/services/{{ w.id }}/_source">source</a>
+                    </td>
+                    <td class="mono dim">{{ w.created_at[:10] }}</td>
+                    <td>
+                        <form action="/services/{{ w.id }}/delete" method="post"
+                              onsubmit="return confirm('Undeploy {{ w.id }}? Its container and image are removed. This cannot be undone.');">
+                            <button type="submit" class="btn-quiet">Undeploy</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            </div>
+            {% else %}
+            <div class="empty">
+                No wrappers deployed. Describe a target above to build the first one.
+            </div>
+            {% endif %}
+        </section>
+
+        <footer>
+            gateway proxies /services/{id}/* to isolated per-wrapper containers ·
+            agents: POST /api/generate → poll /jobs/{id}
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: .
+    ports:
+      - "8800:8000"
+    volumes:
+      - .:/app
+      # Podman rootless socket (adjust path/UID for your system)
+      - /run/user/1000/podman/podman.sock:/run/user/1000/podman/podman.sock
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
+    environment:
+      - PYTHONPATH=/app/src
+      - DOCKER_HOST=unix:///run/user/1000/podman/podman.sock
+      - GATEWAY_PROXY_HOST=host.containers.internal
+      # --- LLM (LiteLLM proxy) ---
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-https://litellm.xn--8pr.xyz/v1}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-REDACTED-KEY}
+      - LLM_MODEL=${LLM_MODEL:-GLM-5.2}
+      - LLM_REQUEST_TIMEOUT=${LLM_REQUEST_TIMEOUT:-120}
+      # Reasoning models burn hidden thinking tokens against this budget; keep generous
+      - LLM_JSON_MAX_TOKENS=${LLM_JSON_MAX_TOKENS:-8000}
+      # --- Web research (SearxNG instance; JSON API required) ---
+      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-https://searxng.schnigg.ie}
+      - SEARXNG_TIMEOUT=${SEARXNG_TIMEOUT:-10}
+      - SEARXNG_MAX_RESULTS=${SEARXNG_MAX_RESULTS:-5}
+      # --- Pipeline ---
+      - PIPELINE_MAX_RETRIES=${PIPELINE_MAX_RETRIES:-5}
+      - WRAPPER_OUTPUT_BASE=${WRAPPER_OUTPUT_BASE:-/tmp/openapi-anything-wrappers}
+      # --- Gateway ---
+      - PROXY_TIMEOUT=${PROXY_TIMEOUT:-30}
+      - MCP_SPEC_TTL=${MCP_SPEC_TTL:-30}
+      - HEALTH_SWEEP_INTERVAL=${HEALTH_SWEEP_INTERVAL:-30}
+      - HEALTH_PROBE_TIMEOUT=${HEALTH_PROBE_TIMEOUT:-2}
+      # Docker hosts: mount /var/run/docker.sock and set DOCKER_HOST=unix:///var/run/docker.sock
+      # On target systems with port 8000 free, change ports to "8000:8000"
+    command: ["python", "-m", "openapi_anything.cli", "serve", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      - redis  # optional for future registry
+  # Example placeholder for a wrapper (in practice started dynamically via SDK)
+  # wrapper-example:
+  #   build: ./wrapper-template
+  #   ports:
+  #     - "8001:8000"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped

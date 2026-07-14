@@ -1,0 +1,92 @@
+"""Auto-generated FastAPI wrapper for: {{ target_description }}
+
+This file is produced by the openapi-anything generator pipeline.
+FastAPI auto-generates /openapi.json at runtime.
+"""
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import subprocess
+import httpx
+from typing import Any
+
+app = FastAPI(
+    title="{{ design.wrapper_title | default(wrapper_id) }}",
+    description="{{ design.description | default(target_description) }}",
+)
+
+{% if inspection.type == "cli" %}
+{% set cmd = inspection.command | default("ls") %}
+class ExecuteRequest(BaseModel):
+    args: list[str] = []
+
+@app.post("/execute")
+async def execute(req: ExecuteRequest):
+    try:
+        result = subprocess.run(
+            ["{{ cmd }}"] + req.args,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return {
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode,
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+{% elif inspection.type == "web" %}
+{% set base_url = inspection.base_url | default("https://httpbin.org") %}
+class ProxyRequest(BaseModel):
+    path: str = "/get"
+    method: str = "GET"
+    body: dict[str, Any] | None = None
+
+@app.get("/fetch")
+async def fetch(path: str = "/get"):
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("{{ base_url }}" + path, timeout=10)
+            return {"status_code": resp.status_code, "body": resp.text[:5000]}
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+@app.post("/proxy")
+async def proxy(req: ProxyRequest):
+    try:
+        async with httpx.AsyncClient() as client:
+            url = "{{ base_url }}" + req.path
+            if req.method.upper() == "POST":
+                resp = await client.post(url, json=req.body, timeout=10)
+            else:
+                resp = await client.get(url, timeout=10)
+            return {"status_code": resp.status_code, "body": resp.text[:5000]}
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+{% else %}
+class ExecuteRequest(BaseModel):
+    args: list[str] = []
+
+@app.post("/execute")
+async def execute(req: ExecuteRequest):
+    try:
+        result = subprocess.run(req.args, capture_output=True, text=True, timeout=10)
+        return {"stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+{% endif %}
+
+@app.get("/")
+async def root():
+    return {
+        "wrapper_id": "{{ wrapper_id }}",
+        "target": "{{ target_description }}",
+        "endpoints": ["/health", "/openapi.json", "/docs"],
+    }
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "target": "{{ target_description }}", "wrapper_id": "{{ wrapper_id }}"}

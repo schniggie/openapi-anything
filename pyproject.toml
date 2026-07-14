@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openapi-anything"
+version = "0.1.0"
+description = "Agentic system that turns natural language descriptions into deployed REST API wrappers with auto-generated OpenAPI specs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    {name = "openapi-anything contributors"}
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+    "openai>=1.54.0",
+    "docker>=7.1.0",
+    "pydantic>=2.9.0",
+    "jinja2>=3.1.0",
+    "pytest>=8.3.0",
+    "requests>=2.32.0",
+    "beautifulsoup4>=4.12.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+[project.scripts]
+openapi-anything = "openapi_anything.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
