@@ -104,9 +104,26 @@ class Designer:
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
-    async def design(self, inspection: dict[str, Any], target_desc: str) -> APIDesign:
-        """Use the LLM to produce a full APIDesign (endpoints + models + handler bodies)."""
+    async def design(
+        self,
+        inspection: dict[str, Any],
+        target_desc: str,
+        prior: dict[str, Any] | None = None,
+    ) -> APIDesign:
+        """Use the LLM to produce a full APIDesign (endpoints + models + handler bodies).
+
+        ``prior`` carries context from a previous version when regenerating
+        (old description + verification report) so the design iterates instead
+        of starting blind."""
         target_type = inspection.get("type", "cli")
+
+        prior_section = ""
+        if prior:
+            prior_section = (
+                "\nA previous version of this wrapper exists. Improve on it: keep "
+                "endpoints that verified ok, fix or replace the ones that failed.\n"
+                f"Previous version context:\n{json.dumps(prior, default=str)[:1200]}\n"
+            )
 
         system_prompt = (
             "You are an expert at wrapping arbitrary targets into clean, agent-usable "
@@ -128,7 +145,7 @@ Target description: {target_desc}
 
 Inspection results:
 {json.dumps(inspection, default=str)[:2500]}
-
+{prior_section}
 {helpers}
 
 Design a complete REST API and respond with JSON only using exactly this schema:

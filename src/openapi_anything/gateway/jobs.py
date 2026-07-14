@@ -104,6 +104,13 @@ class JobStore:
         task.cancel()
         return True
 
+    def active_for(self, wrapper_id: str) -> bool:
+        """True when a queued/running job already targets this wrapper."""
+        return any(
+            j.wrapper_id == wrapper_id and j.status in ("queued", "running")
+            for j in self._jobs.values()
+        )
+
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 

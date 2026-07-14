@@ -146,6 +146,22 @@ _META_TOOLS = [
         },
     },
     {
+        "name": "regenerate_api",
+        "description": (
+            "Re-run the generation pipeline for an existing API wrapper (optionally "
+            "with a refined description). The previous verification report is fed to "
+            "the designer so it iterates instead of starting blind. Returns a job_id."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "wrapper_id": {"type": "string"},
+                "description": {"type": "string", "description": "Optional refined description"},
+            },
+            "required": ["wrapper_id"],
+        },
+    },
+    {
         "name": "job_status",
         "description": "Status of a generation job (status, live phase, result or error).",
         "inputSchema": {
@@ -324,6 +340,29 @@ class MCPGateway:
             return self._tool_result(
                 {"job_id": job.id, "wrapper_id": wid, "status": "queued",
                  "hint": "poll with job_status; tools appear here once completed"}
+            )
+        if name == "regenerate_api":
+            wid = args.get("wrapper_id", "")
+            entry = self.registry.get(wid)
+            if not entry:
+                return self._tool_result(f"Unknown API wrapper: {wid}", is_error=True)
+            if self.jobs.active_for(wid):
+                return self._tool_result(f"A job for {wid} is already running", is_error=True)
+            description = args.get("description") or entry.target_description
+            prior = {
+                "previous_description": entry.target_description,
+                "verification": entry.verification,
+            }
+            job = self.jobs.submit(
+                description,
+                wid,
+                lambda report: generate_and_deploy(
+                    description, self.registry, wid, on_phase=report, prior=prior
+                ),
+            )
+            return self._tool_result(
+                {"job_id": job.id, "wrapper_id": wid, "status": "queued",
+                 "hint": "poll with job_status"}
             )
         if name == "job_status":
             job = self.jobs.get(args.get("job_id", ""))

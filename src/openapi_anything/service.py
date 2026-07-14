@@ -26,6 +26,7 @@ async def generate_and_deploy(
     wrapper_id: str | None = None,
     output_base: Path | None = None,
     on_phase=None,
+    prior: dict[str, Any] | None = None,
 ) -> DeployResult:
     """Run the full generator pipeline, deploy the resulting wrapper, and run
     post-deploy verification. Persists the verification report into the registry.
@@ -41,7 +42,7 @@ async def generate_and_deploy(
     wrapper_id = wrapper_id or f"wrapper-{uuid.uuid4().hex[:8]}"
     llm = LLMClient()
     orchestrator = PipelineOrchestrator(llm, output_base=output_base)
-    state = await orchestrator.run(description, wrapper_id, on_phase=on_phase)
+    state = await orchestrator.run(description, wrapper_id, on_phase=on_phase, prior=prior)
 
     if state.status != "completed":
         return DeployResult(

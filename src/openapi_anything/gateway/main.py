@@ -164,6 +164,61 @@ def create_app() -> FastAPI:
         await undeploy(wrapper_id, reg)
         return RedirectResponse(url="/", status_code=303)
 
+    # ---- Regenerate: re-run the pipeline for an existing wrapper ----
+    class RegenerateRequest(BaseModel):
+        description: str | None = None
+
+    def _submit_regenerate(
+        wrapper_id: str, description: str | None, reg: Registry, jobs: JobStore
+    ):
+        entry = reg.get(wrapper_id)
+        if not entry:
+            raise HTTPException(404, "Wrapper not found")
+        if jobs.active_for(wrapper_id):
+            raise HTTPException(409, f"A job for {wrapper_id} is already running")
+        desc = description or entry.target_description
+        prior = {
+            "previous_description": entry.target_description,
+            "verification": entry.verification,
+        }
+        return jobs.submit(
+            desc,
+            wrapper_id,
+            lambda report: generate_and_deploy(
+                desc, reg, wrapper_id, on_phase=report, prior=prior
+            ),
+        )
+
+    @app.post("/services/{wrapper_id}/_regenerate", status_code=202)
+    async def regenerate_wrapper(
+        wrapper_id: str,
+        req: RegenerateRequest | None = None,
+        reg: Registry = Depends(get_registry),
+        jobs: JobStore = Depends(get_job_store),
+    ):
+        job = _submit_regenerate(wrapper_id, req.description if req else None, reg, jobs)
+        return {
+            "job_id": job.id,
+            "status": "queued",
+            "wrapper_id": wrapper_id,
+            "poll": f"/jobs/{job.id}",
+        }
+
+    @app.post("/services/{wrapper_id}/_regenerate/form")
+    async def regenerate_wrapper_form(
+        wrapper_id: str,
+        reg: Registry = Depends(get_registry),
+        jobs: JobStore = Depends(get_job_store),
+    ):
+        """Hub-friendly regenerate (browser form), redirects back to the hub."""
+        job = _submit_regenerate(wrapper_id, None, reg, jobs)
+        message = f"Regeneration started as job {job.id} (wrapper {wrapper_id})."
+        import urllib.parse
+
+        return RedirectResponse(
+            url=f"/?{urllib.parse.urlencode({'message': message})}", status_code=303
+        )
+
     # ---- MCP export: wrappers as MCP tools (Streamable HTTP, stateless) ----
     async def _mcp_response(request: Request, wrapper_filter: str | None = None):
         body = await request.json()

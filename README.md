@@ -42,7 +42,8 @@ The gateway serves both an HTML hub and a JSON API for agent clients:
 | `POST` | `/jobs/{job_id}/cancel` | – | Cancel a queued/running job (409 if finished) |
 | `GET`  | `/services/{id}/_logs?tail=100` | – | Wrapper container logs (gateway meta route, not proxied) |
 | `GET`  | `/services/{id}/_source` | – | Generated `app.py` of the wrapper |
-| `POST` | `/mcp` | JSON-RPC | **MCP server** (Streamable HTTP): every wrapper's endpoints as tools + `list_apis`/`generate_api`/`job_status` meta tools |
+| `POST` | `/services/{id}/_regenerate` | `{"description": "..."}` (optional) | Re-run the pipeline for an existing wrapper (409 while a job is active); previous verification feeds the new design |
+| `POST` | `/mcp` | JSON-RPC | **MCP server** (Streamable HTTP): every wrapper's endpoints as tools + `list_apis`/`generate_api`/`regenerate_api`/`job_status` meta tools |
 | `POST` | `/services/{id}/mcp` | JSON-RPC | MCP server scoped to one wrapper (no meta tools) |
 | `POST` | `/generate` | form: `description`, `wrapper_id` | Hub form generate — starts a job, hub auto-refreshes (returns HTML) |
 | `GET`  | `/` | – | Hub UI |

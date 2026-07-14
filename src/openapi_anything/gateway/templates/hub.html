@@ -319,7 +319,11 @@
                     </td>
                     <td class="mono dim">{{ w.created_at[:10] }}</td>
                     <td>
-                        <form action="/services/{{ w.id }}/delete" method="post"
+                        <form action="/services/{{ w.id }}/_regenerate/form" method="post" style="display:inline; margin-right:0.4rem;"
+                              onsubmit="return confirm('Regenerate {{ w.id }}? The pipeline re-runs and replaces the running wrapper.');">
+                            <button type="submit" class="btn-quiet" style="color:var(--busy); border-color:var(--busy);">Regenerate</button>
+                        </form>
+                        <form action="/services/{{ w.id }}/delete" method="post" style="display:inline;"
                               onsubmit="return confirm('Undeploy {{ w.id }}? Its container and image are removed. This cannot be undone.');">
                             <button type="submit" class="btn-quiet">Undeploy</button>
                         </form>

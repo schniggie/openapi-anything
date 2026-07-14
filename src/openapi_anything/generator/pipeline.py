@@ -159,6 +159,7 @@ class PipelineOrchestrator:
         description: str,
         wrapper_id: str | None = None,
         on_phase=None,
+        prior: dict[str, Any] | None = None,
     ) -> PipelineState:
         """Execute full pipeline. Returns final state (success or failed).
 
@@ -179,7 +180,7 @@ class PipelineOrchestrator:
             print(f"[pipeline] Inspect complete for {wrapper_id}")
 
             report("design")
-            state.design = await self.designer.design(state.inspection, description)
+            state.design = await self.designer.design(state.inspection, description, prior=prior)
             print(
                 f"[pipeline] Design complete: {len(state.design.endpoints)} endpoints, "
                 f"{len(state.design.models)} models"
