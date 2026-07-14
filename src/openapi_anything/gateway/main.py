@@ -20,10 +20,25 @@ from .proxy import GatewayProxy
 from .registry import Registry, get_registry
 
 
+def revive_wrappers(registry: Registry) -> dict:
+    """Best-effort start of registered wrapper containers that are not running
+    (host reboots leave them exited under rootless podman)."""
+    from openapi_anything.docker.manager import DockerManager
+
+    try:
+        return DockerManager(registry).revive_registered()
+    except Exception as exc:
+        print(f"[gateway] wrapper revive failed: {exc}")
+        return {}
+
+
 def create_app() -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Background health sweep reconciles registry statuses with live containers.
+        # Revive exited wrapper containers, then reconcile statuses continuously.
+        outcome = await asyncio.to_thread(revive_wrappers, get_registry())
+        if outcome:
+            print(f"[gateway] wrapper revive: {outcome}")
         sweeper = asyncio.create_task(run_sweeper(get_registry()))
         yield
         sweeper.cancel()

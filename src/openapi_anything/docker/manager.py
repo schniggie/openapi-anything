@@ -127,6 +127,9 @@ class DockerManager:
             name=container_name,
             ports={"8000/tcp": port},
             remove=False,
+            # Survive daemon restarts; rootless-podman reboots are additionally
+            # covered by revive_registered() at gateway startup.
+            restart_policy={"Name": "unless-stopped"},
         )
 
         service_url = f"http://{proxy_host}:{port}"
@@ -134,6 +137,33 @@ class DockerManager:
             raise RuntimeError(f"Wrapper {wrapper_id} container failed health check on port {port}")
 
         return service_url, port
+
+    def revive_registered(self) -> Dict[str, str]:
+        """Start registered wrappers whose containers exist but are not running
+        (e.g. after a host reboot — rootless podman does not honor restart
+        policies across boots without a systemd unit). Returns id -> outcome."""
+        if self.client is None:
+            return {}
+        outcome: Dict[str, str] = {}
+        for entry in self.registry.list_all():
+            try:
+                container = self.client.containers.get(f"wrapper-{entry.id}")
+            except NotFound:
+                outcome[entry.id] = "container-missing"
+                continue
+            except (APIError, DockerException) as exc:
+                outcome[entry.id] = f"error: {exc}"
+                continue
+            if container.status == "running":
+                outcome[entry.id] = "running"
+                continue
+            try:
+                container.start()
+                outcome[entry.id] = "started"
+                print(f"[docker] revived wrapper container wrapper-{entry.id}")
+            except (APIError, DockerException) as exc:
+                outcome[entry.id] = f"error: {exc}"
+        return outcome
 
     def get_logs(self, wrapper_id: str, tail: int = 100) -> str:
         """Container logs for a wrapper. Raises KeyError when the container (or a
