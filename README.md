@@ -129,6 +129,8 @@ values are read at runtime, not import time):
 | `WRAPPER_OUTPUT_BASE` | `/tmp/openapi-anything-wrappers` | Generated wrapper code directory |
 | `PROXY_TIMEOUT` | `30` | Gateway → wrapper proxy timeout (s) |
 | `MCP_SPEC_TTL` | `30` | Seconds MCP tool schemas are cached per wrapper |
+| `REDIS_URL` | unset (in-memory) | Job persistence backend; compose sets `redis://redis:6379/0`. History survives restarts; interrupted jobs are marked failed |
+| `JOBS_HISTORY_MAX` | `200` | Terminal jobs kept in history before pruning oldest |
 | `HEALTH_SWEEP_INTERVAL` | `30` | Seconds between registry health sweeps |
 | `HEALTH_PROBE_TIMEOUT` | `2` | Per-wrapper /health probe timeout (s) |
 | `GATEWAY_PROXY_HOST` | `127.0.0.1` | Host wrappers are reachable on from the gateway |

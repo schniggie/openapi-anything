@@ -32,13 +32,16 @@ services:
       # --- Gateway ---
       - PROXY_TIMEOUT=${PROXY_TIMEOUT:-30}
       - MCP_SPEC_TTL=${MCP_SPEC_TTL:-30}
+      # Job persistence: history + interrupted-job detection across restarts
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - JOBS_HISTORY_MAX=${JOBS_HISTORY_MAX:-200}
       - HEALTH_SWEEP_INTERVAL=${HEALTH_SWEEP_INTERVAL:-30}
       - HEALTH_PROBE_TIMEOUT=${HEALTH_PROBE_TIMEOUT:-2}
       # Docker hosts: mount /var/run/docker.sock and set DOCKER_HOST=unix:///var/run/docker.sock
       # On target systems with port 8000 free, change ports to "8000:8000"
     command: ["python", "-m", "openapi_anything.cli", "serve", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
-      - redis  # optional for future registry
+      - redis  # job history persistence (REDIS_URL)
   # Example placeholder for a wrapper (in practice started dynamically via SDK)
   # wrapper-example:
   #   build: ./wrapper-template
