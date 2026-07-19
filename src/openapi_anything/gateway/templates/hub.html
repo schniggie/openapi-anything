@@ -224,6 +224,10 @@
                         <label for="wrapper_id">wrapper_id — optional, auto-assigned if blank</label>
                         <input type="text" id="wrapper_id" name="wrapper_id" placeholder="my-ls-wrapper-v1">
                     </div>
+                    <div class="field">
+                        <label for="secrets">secrets — optional, KEY=value per line, injected as env vars</label>
+                        <textarea id="secrets" name="secrets" rows="1" placeholder="API_KEY=..."></textarea>
+                    </div>
                     <button type="submit">Generate wrapper</button>
                 </div>
             </form>

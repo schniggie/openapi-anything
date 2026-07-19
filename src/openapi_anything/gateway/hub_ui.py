@@ -14,6 +14,17 @@ from openapi_anything.service import generate_and_deploy
 
 from .jobs import get_job_store
 from .registry import get_registry
+from .secrets import get_secret_store
+
+
+def _parse_secret_lines(raw: str) -> dict[str, str]:
+    """Parse KEY=value lines (hub form) into a secrets dict; blanks ignored."""
+    secrets: dict[str, str] = {}
+    for line in (raw or "").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip():
+            secrets[key.strip()] = value.strip()
+    return secrets
 
 router = APIRouter()
 template_dir = str(Path(__file__).parent / "templates")
@@ -53,15 +64,21 @@ async def trigger_generate(
     registry=Depends(get_registry),
     description: str = Form(...),
     wrapper_id: str = Form(None),
+    secrets: str = Form(""),
 ):
     """Start generation as a background job and redirect back to the hub
     (Post/Redirect/Get: the hub's meta-refresh re-requests the current URL as GET,
     so rendering HTML directly at /generate would produce 405s on refresh)."""
     wid = wrapper_id or f"wrapper-{uuid.uuid4().hex[:8]}"
+    secret_dict = _parse_secret_lines(secrets) or None
+    if secret_dict:
+        get_secret_store().set(wid, secret_dict)
     job = get_job_store().submit(
         description,
         wid,
-        lambda report: generate_and_deploy(description, registry, wid, on_phase=report),
+        lambda report: generate_and_deploy(
+            description, registry, wid, on_phase=report, secrets=secret_dict
+        ),
     )
     message = f"Generation started as job {job.id} (wrapper {wid}). This page auto-refreshes."
     query = urllib.parse.urlencode({"message": message})

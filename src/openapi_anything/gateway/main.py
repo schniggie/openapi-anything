@@ -18,6 +18,7 @@ from .jobs import JobStore, get_job_store
 from .mcp import get_mcp
 from .proxy import GatewayProxy
 from .registry import Registry, get_registry
+from .secrets import get_secret_store
 
 
 def revive_wrappers(registry: Registry) -> dict:
@@ -61,6 +62,9 @@ def create_app() -> FastAPI:
     class GenerateRequest(BaseModel):
         description: str
         wrapper_id: str | None = None
+        # Target credentials -> wrapper container env vars. Values are kept in the
+        # SecretStore + container env only; the LLM sees the names.
+        secrets: dict[str, str] | None = None
 
     # ---- JSON API for agent clients (B1: distinct from the hub's form /generate) ----
     # Async by design: generation takes minutes, so the endpoint returns a job id
@@ -72,11 +76,14 @@ def create_app() -> FastAPI:
         jobs: JobStore = Depends(get_job_store),
     ):
         wrapper_id = req.wrapper_id or f"wrapper-{uuid.uuid4().hex[:8]}"
+        secrets = req.secrets or None
+        if secrets:
+            get_secret_store().set(wrapper_id, secrets)
         job = jobs.submit(
             req.description,
             wrapper_id,
             lambda report: generate_and_deploy(
-                req.description, reg, wrapper_id, on_phase=report
+                req.description, reg, wrapper_id, on_phase=report, secrets=secrets
             ),
         )
         return {
@@ -156,6 +163,7 @@ def create_app() -> FastAPI:
         summary = await undeploy(wrapper_id, reg)
         if not summary.get("removed"):
             raise HTTPException(404, summary.get("reason", "Wrapper not found"))
+        get_secret_store().delete(wrapper_id)
         return {"wrapper_id": wrapper_id, "removed": True, "lifecycle": summary["lifecycle"]}
 
     @app.post("/services/{wrapper_id}/delete")
@@ -167,9 +175,14 @@ def create_app() -> FastAPI:
     # ---- Regenerate: re-run the pipeline for an existing wrapper ----
     class RegenerateRequest(BaseModel):
         description: str | None = None
+        secrets: dict[str, str] | None = None  # override; else stored secrets reused
 
     def _submit_regenerate(
-        wrapper_id: str, description: str | None, reg: Registry, jobs: JobStore
+        wrapper_id: str,
+        description: str | None,
+        reg: Registry,
+        jobs: JobStore,
+        secrets: dict[str, str] | None = None,
     ):
         entry = reg.get(wrapper_id)
         if not entry:
@@ -177,6 +190,11 @@ def create_app() -> FastAPI:
         if jobs.active_for(wrapper_id):
             raise HTTPException(409, f"A job for {wrapper_id} is already running")
         desc = description or entry.target_description
+        store = get_secret_store()
+        if secrets:
+            store.set(wrapper_id, secrets)
+        else:
+            secrets = store.get(wrapper_id) or None
         prior = {
             "previous_description": entry.target_description,
             "verification": entry.verification,
@@ -185,7 +203,7 @@ def create_app() -> FastAPI:
             desc,
             wrapper_id,
             lambda report: generate_and_deploy(
-                desc, reg, wrapper_id, on_phase=report, prior=prior
+                desc, reg, wrapper_id, on_phase=report, prior=prior, secrets=secrets
             ),
         )
 
@@ -196,7 +214,13 @@ def create_app() -> FastAPI:
         reg: Registry = Depends(get_registry),
         jobs: JobStore = Depends(get_job_store),
     ):
-        job = _submit_regenerate(wrapper_id, req.description if req else None, reg, jobs)
+        job = _submit_regenerate(
+            wrapper_id,
+            req.description if req else None,
+            reg,
+            jobs,
+            secrets=req.secrets if req else None,
+        )
         return {
             "job_id": job.id,
             "status": "queued",

@@ -160,6 +160,7 @@ class PipelineOrchestrator:
         wrapper_id: str | None = None,
         on_phase=None,
         prior: dict[str, Any] | None = None,
+        credential_env: list[str] | None = None,
     ) -> PipelineState:
         """Execute full pipeline. Returns final state (success or failed).
 
@@ -177,6 +178,10 @@ class PipelineOrchestrator:
         try:
             report("inspect")
             state.inspection = await self.inspector.inspect(description)
+            if credential_env:
+                # Secret NAMES only — the designer writes os.getenv(...) calls;
+                # values go straight into the container env at deploy.
+                state.inspection["credential_env_vars"] = credential_env
             print(f"[pipeline] Inspect complete for {wrapper_id}")
 
             report("design")

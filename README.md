@@ -36,7 +36,7 @@ The gateway serves both an HTML hub and a JSON API for agent clients:
 
 | Method | Path | Body | Purpose |
 |--------|------|------|---------|
-| `POST` | `/api/generate` | `{"description": "...", "wrapper_id": "..."}` | **JSON** async generate+deploy: returns `202 {"job_id", "poll"}` immediately |
+| `POST` | `/api/generate` | `{"description": "...", "wrapper_id": "...", "secrets": {"ENV": "val"}}` | **JSON** async generate+deploy: returns `202 {"job_id", "poll"}` immediately. `secrets` become wrapper env vars (values never enter generated code/LLM prompts/registry — names only) |
 | `GET`  | `/jobs/{job_id}` | – | Poll a generation job (status + live `phase` + result) |
 | `GET`  | `/jobs` | – | List generation jobs (newest first) |
 | `POST` | `/jobs/{job_id}/cancel` | – | Cancel a queued/running job (409 if finished) |

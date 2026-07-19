@@ -25,6 +25,7 @@ class WrapperEntry:
     created_at: str
     verification: dict | None = None  # post-deploy verification report (phase 7)
     wrapper_dir: str | None = None  # generated-code dir (serves /_source)
+    secret_names: list | None = None  # credential env var NAMES (values in SecretStore)
 
 
 class Registry:
@@ -47,6 +48,7 @@ class Registry:
                 # tolerate old entries that predate newer optional fields
                 entry_data.setdefault("verification", None)
                 entry_data.setdefault("wrapper_dir", None)
+                entry_data.setdefault("secret_names", None)
                 entry = WrapperEntry(**entry_data)
                 entries[entry.id] = entry
             self._entries = entries

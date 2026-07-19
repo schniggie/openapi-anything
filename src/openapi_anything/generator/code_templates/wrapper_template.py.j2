@@ -6,6 +6,7 @@ FastAPI auto-generates /openapi.json at runtime.
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import os
 import subprocess
 import httpx
 from typing import Any

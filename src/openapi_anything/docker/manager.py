@@ -73,7 +73,13 @@ class DockerManager:
             await asyncio.sleep(delay)
         return False
 
-    async def _deploy_local(self, wrapper_id: str, wrapper_dir: Path, proxy_host: str) -> Tuple[str, int]:
+    async def _deploy_local(
+        self,
+        wrapper_id: str,
+        wrapper_dir: Path,
+        proxy_host: str,
+        environment: Dict[str, str] | None = None,
+    ) -> Tuple[str, int]:
         port = self._find_free_port()
         service_url = f"http://{proxy_host}:{port}"
         print(f"[local] Starting uvicorn for {wrapper_id} on port {port}")
@@ -83,6 +89,7 @@ class DockerManager:
             cwd=str(wrapper_dir),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env={**os.environ, **(environment or {})},
         )
         _local_processes[wrapper_id] = proc
 
@@ -99,12 +106,21 @@ class DockerManager:
 
         return service_url, port
 
-    async def deploy_wrapper(self, wrapper_id: str, wrapper_dir: Path, target_desc: str) -> Tuple[str, int]:
-        """Build and run wrapper container, or fall back to local uvicorn subprocess."""
+    async def deploy_wrapper(
+        self,
+        wrapper_id: str,
+        wrapper_dir: Path,
+        target_desc: str,
+        environment: Dict[str, str] | None = None,
+    ) -> Tuple[str, int]:
+        """Build and run wrapper container, or fall back to local uvicorn subprocess.
+
+        ``environment`` carries target credentials into the container — values
+        exist only in the container config, never in the generated code."""
         proxy_host = self._proxy_host()
 
         if self.client is None:
-            return await self._deploy_local(wrapper_id, wrapper_dir, proxy_host)
+            return await self._deploy_local(wrapper_id, wrapper_dir, proxy_host, environment)
 
         image_tag = f"openapi-wrapper-{wrapper_id}:latest"
         container_name = f"wrapper-{wrapper_id}"
@@ -127,6 +143,7 @@ class DockerManager:
             name=container_name,
             ports={"8000/tcp": port},
             remove=False,
+            environment=environment or {},
             # Survive daemon restarts; rootless-podman reboots are additionally
             # covered by revive_registered() at gateway startup.
             restart_policy={"Name": "unless-stopped"},

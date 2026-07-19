@@ -132,6 +132,17 @@ class Designer:
             "Output ONLY valid JSON matching the requested schema. No prose, no markdown."
         )
 
+        cred_names = inspection.get("credential_env_vars") or []
+        credentials_section = ""
+        if cred_names:
+            credentials_section = (
+                "\nTarget credentials are provided as environment variables: "
+                + ", ".join(cred_names)
+                + ". Read them in handler_code with os.getenv('NAME') and use them for "
+                "authentication (e.g. Authorization headers). NEVER hardcode secret "
+                "values in code.\n"
+            )
+
         helpers = (
             "Available helper functions inside the generated app (call them from handler_code):\n"
             "- CLI targets: run_command(args: list[str]) -> dict  # returns "
@@ -145,7 +156,7 @@ Target description: {target_desc}
 
 Inspection results:
 {json.dumps(inspection, default=str)[:2500]}
-{prior_section}
+{prior_section}{credentials_section}
 {helpers}
 
 Design a complete REST API and respond with JSON only using exactly this schema:

@@ -27,6 +27,7 @@ async def generate_and_deploy(
     output_base: Path | None = None,
     on_phase=None,
     prior: dict[str, Any] | None = None,
+    secrets: dict[str, str] | None = None,
 ) -> DeployResult:
     """Run the full generator pipeline, deploy the resulting wrapper, and run
     post-deploy verification. Persists the verification report into the registry.
@@ -42,7 +43,10 @@ async def generate_and_deploy(
     wrapper_id = wrapper_id or f"wrapper-{uuid.uuid4().hex[:8]}"
     llm = LLMClient()
     orchestrator = PipelineOrchestrator(llm, output_base=output_base)
-    state = await orchestrator.run(description, wrapper_id, on_phase=on_phase, prior=prior)
+    credential_env = sorted(secrets.keys()) if secrets else []
+    state = await orchestrator.run(
+        description, wrapper_id, on_phase=on_phase, prior=prior, credential_env=credential_env
+    )
 
     if state.status != "completed":
         return DeployResult(
@@ -56,7 +60,9 @@ async def generate_and_deploy(
         on_phase("deploy")
     docker_mgr = DockerManager(registry)
     wrapper_dir = output_base / wrapper_id
-    service_url, _port = await docker_mgr.deploy_wrapper(wrapper_id, wrapper_dir, description)
+    service_url, _port = await docker_mgr.deploy_wrapper(
+        wrapper_id, wrapper_dir, description, environment=secrets or None
+    )
 
     # Phase 7: post-deploy verification against the live service.
     if on_phase is not None:
@@ -82,6 +88,7 @@ async def generate_and_deploy(
         created_at=datetime.now(UTC).isoformat(),
         verification=verification,
         wrapper_dir=str(wrapper_dir),
+        secret_names=credential_env or None,
     )
     registry.register(entry)
 

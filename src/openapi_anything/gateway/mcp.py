@@ -25,6 +25,7 @@ from openapi_anything.service import generate_and_deploy
 
 from .jobs import JobStore, get_job_store
 from .registry import Registry, WrapperEntry, get_registry
+from .secrets import get_secret_store
 
 PROTOCOL_VERSION = "2025-06-18"
 _SKIP_PATHS = {"/", "/health"}
@@ -141,6 +142,13 @@ _META_TOOLS = [
             "properties": {
                 "description": {"type": "string", "description": "What to wrap"},
                 "wrapper_id": {"type": "string", "description": "Optional id (auto if omitted)"},
+                "secrets": {
+                    "type": "object",
+                    "description": (
+                        "Optional target credentials as {ENV_NAME: value}; injected "
+                        "into the wrapper container env, never into generated code"
+                    ),
+                },
             },
             "required": ["description"],
         },
@@ -330,11 +338,14 @@ class MCPGateway:
             if not description:
                 return self._tool_result("'description' is required", is_error=True)
             wid = args.get("wrapper_id") or f"wrapper-{uuid.uuid4().hex[:8]}"
+            secrets = args.get("secrets") or None
+            if secrets:
+                get_secret_store().set(wid, secrets)
             job = self.jobs.submit(
                 description,
                 wid,
                 lambda report: generate_and_deploy(
-                    description, self.registry, wid, on_phase=report
+                    description, self.registry, wid, on_phase=report, secrets=secrets
                 ),
             )
             return self._tool_result(
@@ -349,6 +360,7 @@ class MCPGateway:
             if self.jobs.active_for(wid):
                 return self._tool_result(f"A job for {wid} is already running", is_error=True)
             description = args.get("description") or entry.target_description
+            secrets = get_secret_store().get(wid) or None
             prior = {
                 "previous_description": entry.target_description,
                 "verification": entry.verification,
@@ -357,7 +369,8 @@ class MCPGateway:
                 description,
                 wid,
                 lambda report: generate_and_deploy(
-                    description, self.registry, wid, on_phase=report, prior=prior
+                    description, self.registry, wid, on_phase=report, prior=prior,
+                    secrets=secrets,
                 ),
             )
             return self._tool_result(
