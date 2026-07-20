@@ -38,8 +38,13 @@ Path(template_dir).mkdir(exist_ok=True)
 
 
 def _render_hub(request: Request, wrappers: list, message: str | None = None) -> HTMLResponse:
+    from .metrics import get_metrics_store
+
     template = env.get_template("hub.html")
     jobs = get_job_store()
+    metrics = get_metrics_store()
+    for w in wrappers:
+        w["metrics"] = metrics.get(w["id"])
     html = template.render(
         request=request,
         wrappers=wrappers,

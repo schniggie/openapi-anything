@@ -298,6 +298,7 @@
                     <th>Wrapper</th>
                     <th>Target</th>
                     <th>Endpoints</th>
+                    <th>Traffic</th>
                     <th>Created</th>
                     <th></th>
                 </tr>
@@ -320,6 +321,11 @@
                         <a href="/services/{{ w.id }}/docs">docs</a> ·
                         <a href="/services/{{ w.id }}/_logs">logs</a> ·
                         <a href="/services/{{ w.id }}/_source">source</a>
+                    </td>
+                    <td class="mono dim">
+                        {{ w.metrics.requests }} req
+                        {% if w.metrics.errors %} · <span style="color:var(--bad);">{{ w.metrics.errors }} err</span>{% endif %}
+                        {% if w.metrics.requests %} · {{ w.metrics.avg_latency_ms }} ms{% endif %}
                     </td>
                     <td class="mono dim">{{ w.created_at[:10] }}</td>
                     <td>

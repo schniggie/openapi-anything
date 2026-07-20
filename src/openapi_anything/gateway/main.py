@@ -16,6 +16,7 @@ from .health import run_sweeper
 from .hub_ui import router as hub_router
 from .jobs import JobStore, get_job_store
 from .mcp import get_mcp
+from .metrics import get_metrics_store, metrics_flush_interval
 from .proxy import GatewayProxy
 from .registry import Registry, get_registry
 from .secrets import get_secret_store
@@ -41,10 +42,19 @@ def create_app() -> FastAPI:
         if outcome:
             print(f"[gateway] wrapper revive: {outcome}")
         sweeper = asyncio.create_task(run_sweeper(get_registry()))
+
+        async def _flush_metrics_forever():
+            while True:
+                await asyncio.sleep(metrics_flush_interval())
+                get_metrics_store().flush()
+
+        flusher = asyncio.create_task(_flush_metrics_forever())
         yield
-        sweeper.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await sweeper
+        for task in (sweeper, flusher):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        get_metrics_store().flush()  # final write-behind on shutdown
 
     app = FastAPI(
         title="openapi-anything Gateway",
@@ -164,6 +174,7 @@ def create_app() -> FastAPI:
         if not summary.get("removed"):
             raise HTTPException(404, summary.get("reason", "Wrapper not found"))
         get_secret_store().delete(wrapper_id)
+        get_metrics_store().remove(wrapper_id)
         return {"wrapper_id": wrapper_id, "removed": True, "lifecycle": summary["lifecycle"]}
 
     @app.post("/services/{wrapper_id}/delete")
@@ -301,7 +312,25 @@ def create_app() -> FastAPI:
         path: str,
         request: Request,
     ):
-        return await proxy.proxy_request(wrapper_id, path, request)
+        import time
+
+        start = time.monotonic()
+        try:
+            response = await proxy.proxy_request(wrapper_id, path, request)
+        except HTTPException as exc:
+            if exc.status_code != 404:  # unknown wrappers aren't traffic
+                get_metrics_store().record(
+                    wrapper_id, exc.status_code, (time.monotonic() - start) * 1000
+                )
+            raise
+        get_metrics_store().record(
+            wrapper_id, response.status_code, (time.monotonic() - start) * 1000
+        )
+        return response
+
+    @app.get("/metrics")
+    async def metrics():
+        return {"wrappers": get_metrics_store().all()}
 
     @app.get("/health")
     async def health():

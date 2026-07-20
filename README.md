@@ -48,6 +48,7 @@ The gateway serves both an HTML hub and a JSON API for agent clients:
 | `POST` | `/generate` | form: `description`, `wrapper_id` | Hub form generate — starts a job, hub auto-refreshes (returns HTML) |
 | `GET`  | `/` | – | Hub UI |
 | `GET`  | `/registry` | – | List deployed wrappers |
+| `GET`  | `/metrics` | – | Per-wrapper traffic: requests, errors, avg latency, last used |
 | `GET`  | `/services/{id}/openapi.json` | – | Wrapper's OpenAPI spec (proxied) |
 | `GET/POST/...` | `/services/{id}/{path}` | – | Reverse-proxy to the wrapper container |
 | `DELETE` | `/services/{id}` | – | Undeploy a wrapper (container+image removed) |
@@ -131,6 +132,7 @@ values are read at runtime, not import time):
 | `MCP_SPEC_TTL` | `30` | Seconds MCP tool schemas are cached per wrapper |
 | `REDIS_URL` | unset (in-memory) | Job persistence backend; compose sets `redis://redis:6379/0`. History survives restarts; interrupted jobs are marked failed |
 | `JOBS_HISTORY_MAX` | `200` | Terminal jobs kept in history before pruning oldest |
+| `METRICS_FLUSH_INTERVAL` | `30` | Seconds between metric flushes to redis |
 | `HEALTH_SWEEP_INTERVAL` | `30` | Seconds between registry health sweeps |
 | `HEALTH_PROBE_TIMEOUT` | `2` | Per-wrapper /health probe timeout (s) |
 | `GATEWAY_PROXY_HOST` | `127.0.0.1` | Host wrappers are reachable on from the gateway |

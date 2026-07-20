@@ -307,6 +307,9 @@ class MCPGateway:
             query = {k: remaining.pop(k) for k in op["query_params"] if k in remaining}
             body = remaining or None
 
+        from .metrics import get_metrics_store
+
+        start = time.monotonic()
         try:
             async with self.client_factory() as client:
                 resp = await client.request(
@@ -316,7 +319,11 @@ class MCPGateway:
                     json=body,
                 )
         except Exception as exc:
+            get_metrics_store().record(wrapper_id, 599, (time.monotonic() - start) * 1000)
             return self._tool_result(f"Request to {wrapper_id} failed: {exc}", is_error=True)
+        get_metrics_store().record(
+            wrapper_id, resp.status_code, (time.monotonic() - start) * 1000
+        )
 
         try:
             payload = resp.json()
