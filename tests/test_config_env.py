@@ -11,6 +11,20 @@ from openapi_anything.generator.websearch import SearxNGClient
 from openapi_anything.gateway.proxy import GatewayProxy
 
 
+def test_llm_client_constructs_without_key_configured(monkeypatch):
+    """Construction must never raise just because no key is configured —
+    every LLM call site in this codebase wraps calls in try/except and
+    degrades gracefully (default design, heuristic inspection, etc.); a
+    hard crash at construction time would break that pattern. The actual
+    auth failure surfaces later, at the real API call, where callers
+    already handle it. Regression: newer openai SDK versions (2.4x+)
+    validate credentials eagerly and raise on a falsy api_key — verified
+    locally against openai==2.46.0 in a clean env."""
+    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    LLMClient()  # must not raise
+
+
 def test_llm_model_default_is_glm_5_2(monkeypatch):
     monkeypatch.delenv("LLM_MODEL", raising=False)
     assert LLMClient().model == "GLM-5.2"

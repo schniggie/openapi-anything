@@ -39,7 +39,12 @@ class LLMClient:
     def __init__(self, model: str | None = None):
         self.client = AsyncOpenAI(
             base_url=os.getenv("LITELLM_BASE_URL", "https://litellm.xn--8pr.xyz/v1"),
-            api_key=os.getenv("LITELLM_API_KEY", ""),
+            # A placeholder (never a real default — this file is public): newer
+            # openai SDK versions validate credentials eagerly and raise on a
+            # falsy api_key, which would break construction-time robustness.
+            # The real auth failure surfaces at the actual API call instead,
+            # where every call site already handles it (try/except + fallback).
+            api_key=os.getenv("LITELLM_API_KEY") or "not-configured",
             # A full json-mode design normally completes in ~20-60s; generous headroom
             # while still failing fast rather than hanging indefinitely.
             timeout=float(os.getenv("LLM_REQUEST_TIMEOUT", "120")),
