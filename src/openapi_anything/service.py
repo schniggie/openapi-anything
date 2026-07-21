@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from openapi_anything.gateway.registry import Registry, WrapperEntry
 
@@ -25,7 +25,7 @@ async def generate_and_deploy(
     registry: Registry,
     wrapper_id: str | None = None,
     output_base: Path | None = None,
-    on_phase=None,
+    on_phase: Callable[[str], None] | None = None,
     prior: dict[str, Any] | None = None,
     secrets: dict[str, str] | None = None,
 ) -> DeployResult:

@@ -16,20 +16,20 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
+
+import redis
 
 from openapi_anything.service import DeployResult
 
 _REDIS_KEY = "openapi-anything:jobs"
 
 
-def _connect_redis():
+def _connect_redis() -> "redis.Redis | None":
     url = os.getenv("REDIS_URL", "")
     if not url:
         return None
     try:
-        import redis
-
         client = redis.Redis.from_url(url, socket_timeout=2, decode_responses=True)
         client.ping()
         return client
@@ -59,9 +59,9 @@ def _now() -> str:
 
 
 class JobStore:
-    def __init__(self, redis_client=None) -> None:
+    def __init__(self, redis_client: "redis.Redis | None" = None) -> None:
         self._jobs: dict[str, Job] = {}
-        self._tasks: dict[str, asyncio.Task] = {}
+        self._tasks: dict[str, "asyncio.Task[None]"] = {}
         self._cancel_requested: set[str] = set()
         self._redis = redis_client if redis_client is not None else _connect_redis()
         self._load()
@@ -72,7 +72,9 @@ class JobStore:
         if self._redis is None:
             return
         try:
-            raw = self._redis.hgetall(_REDIS_KEY)
+            # redis-py's command stubs return a pipeline-compatible Awaitable|T
+            # union even on a plain sync client; this store only uses sync redis.
+            raw = cast(dict[str, str], self._redis.hgetall(_REDIS_KEY))
         except Exception as exc:
             print(f"[jobs] redis load failed ({exc}); continuing in-memory")
             self._redis = None

@@ -13,7 +13,7 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple, cast
 
 import docker
 from docker.errors import APIError, DockerException, ImageNotFound, NotFound
@@ -21,7 +21,7 @@ from docker.errors import APIError, DockerException, ImageNotFound, NotFound
 from ..gateway.registry import Registry
 
 # Track local uvicorn subprocesses for cleanup
-_local_processes: Dict[str, subprocess.Popen] = {}
+_local_processes: Dict[str, "subprocess.Popen[bytes]"] = {}
 
 
 class DockerManager:
@@ -35,7 +35,7 @@ class DockerManager:
             self.client = self._try_podman_socket()
 
     @staticmethod
-    def _try_podman_socket():
+    def _try_podman_socket() -> "docker.DockerClient | None":
         """Attempt to connect to a rootless podman socket if DOCKER_HOST points at one
         (or the default XDG runtime path exists)."""
         try:
@@ -54,7 +54,7 @@ class DockerManager:
     def _find_free_port(self) -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("", 0))
-            return s.getsockname()[1]
+            return int(s.getsockname()[1])
 
     def _proxy_host(self) -> str:
         return os.environ.get("GATEWAY_PROXY_HOST", "127.0.0.1")
@@ -145,8 +145,10 @@ class DockerManager:
             remove=False,
             environment=environment or {},
             # Survive daemon restarts; rootless-podman reboots are additionally
-            # covered by revive_registered() at gateway startup.
-            restart_policy={"Name": "unless-stopped"},
+            # covered by revive_registered() at gateway startup. Cast: the docker
+            # stub wants a specific RestartPolicy TypedDict; a plain dict with the
+            # same shape is accepted at runtime.
+            restart_policy=cast(Any, {"Name": "unless-stopped"}),
         )
 
         service_url = f"http://{proxy_host}:{port}"
@@ -193,12 +195,12 @@ class DockerManager:
             raise KeyError(wrapper_id) from None
         return container.logs(tail=tail).decode(errors="replace")
 
-    def stop_and_remove_wrapper(self, wrapper_id: str, remove_image: bool = True) -> dict:
+    def stop_and_remove_wrapper(self, wrapper_id: str, remove_image: bool = True) -> dict[str, str | None]:
         """Stop + remove a wrapper's container (and image). Works for both the Docker
         path and the local-subprocess fallback. Returns a summary of what happened."""
         container_name = f"wrapper-{wrapper_id}"
         image_tag = f"openapi-wrapper-{wrapper_id}:latest"
-        summary: dict = {"container": None, "image": None}
+        summary: dict[str, str | None] = {"container": None, "image": None}
 
         # Local subprocess path
         proc = _local_processes.pop(wrapper_id, None)

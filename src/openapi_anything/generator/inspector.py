@@ -115,7 +115,7 @@ class TargetInspector:
         self,
         description: str,
         research_block: str = "",
-        research: list | None = None,
+        research: list[dict[str, str]] | None = None,
     ) -> Dict[str, Any]:
         """Inspect web target: fetch URL, parse with bs4 for forms/endpoints.
 

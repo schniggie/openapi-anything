@@ -14,7 +14,7 @@ class GatewayProxy:
             timeout = float(os.getenv("PROXY_TIMEOUT", "30"))
         self.client = httpx.AsyncClient(timeout=timeout)
 
-    async def proxy_request(self, wrapper_id: str, path: str, request: Request):
+    async def proxy_request(self, wrapper_id: str, path: str, request: Request) -> StreamingResponse:
         reg = get_registry()
         entry = reg.get(wrapper_id)
         if not entry:

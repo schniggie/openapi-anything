@@ -2,6 +2,7 @@
 
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import urllib.parse
 import uuid
@@ -13,7 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from openapi_anything.service import generate_and_deploy
 
 from .jobs import get_job_store
-from .registry import get_registry
+from .registry import Registry, get_registry
 from .secrets import get_secret_store
 
 
@@ -37,7 +38,9 @@ env = jinja2.Environment(
 Path(template_dir).mkdir(exist_ok=True)
 
 
-def _render_hub(request: Request, wrappers: list, message: str | None = None) -> HTMLResponse:
+def _render_hub(
+    request: Request, wrappers: list[dict[str, Any]], message: str | None = None
+) -> HTMLResponse:
     from .metrics import get_metrics_store
 
     template = env.get_template("hub.html")
@@ -58,19 +61,19 @@ def _render_hub(request: Request, wrappers: list, message: str | None = None) ->
 
 @router.get("/", response_class=HTMLResponse)
 async def hub_home(
-    request: Request, registry=Depends(get_registry), message: str | None = None
-):
+    request: Request, registry: Registry = Depends(get_registry), message: str | None = None
+) -> HTMLResponse:
     wrappers = [asdict(w) for w in registry.list_all()]
     return _render_hub(request, wrappers, message=message)
 
 
 @router.post("/generate")
 async def trigger_generate(
-    registry=Depends(get_registry),
+    registry: Registry = Depends(get_registry),
     description: str = Form(...),
     wrapper_id: str = Form(None),
     secrets: str = Form(""),
-):
+) -> RedirectResponse:
     """Start generation as a background job and redirect back to the hub
     (Post/Redirect/Get: the hub's meta-refresh re-requests the current URL as GET,
     so rendering HTML directly at /generate would produce 405s on refresh)."""

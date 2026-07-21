@@ -19,7 +19,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .code_generator import CodeGenerator
 from .designer import APIDesign, EndpointSpec
@@ -88,7 +88,7 @@ class PipelineOrchestrator:
             if "app" in sys.modules:
                 del sys.modules["app"]
             importlib.import_module("app")
-            from app import app as wrapper_app  # type: ignore[import-untyped]
+            from app import app as wrapper_app  # type: ignore[import-not-found]
 
             client = TestClient(wrapper_app)
             health = client.get("/health")
@@ -115,7 +115,7 @@ class PipelineOrchestrator:
         description: str,
         wrapper_id: str,
         state: PipelineState,
-        on_phase=None,
+        on_phase: Callable[[str], None] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Fix loop: deterministic generate -> test -> LLM repair -> ... -> safe fallback.
 
@@ -158,7 +158,7 @@ class PipelineOrchestrator:
         self,
         description: str,
         wrapper_id: str | None = None,
-        on_phase=None,
+        on_phase: Callable[[str], None] | None = None,
         prior: dict[str, Any] | None = None,
         credential_env: list[str] | None = None,
     ) -> PipelineState:

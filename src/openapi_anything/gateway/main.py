@@ -4,7 +4,9 @@ JSON + form generate endpoints, and wrapper lifecycle (undeploy)."""
 import asyncio
 import contextlib
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
@@ -14,7 +16,7 @@ from openapi_anything.service import generate_and_deploy, undeploy
 
 from .health import run_sweeper
 from .hub_ui import router as hub_router
-from .jobs import JobStore, get_job_store
+from .jobs import Job, JobStore, get_job_store
 from .mcp import get_mcp
 from .metrics import get_metrics_store, metrics_flush_interval
 from .proxy import GatewayProxy
@@ -22,7 +24,7 @@ from .registry import Registry, get_registry
 from .secrets import get_secret_store
 
 
-def revive_wrappers(registry: Registry) -> dict:
+def revive_wrappers(registry: Registry) -> dict[str, str]:
     """Best-effort start of registered wrapper containers that are not running
     (host reboots leave them exited under rootless podman)."""
     from openapi_anything.docker.manager import DockerManager
@@ -36,14 +38,14 @@ def revive_wrappers(registry: Registry) -> dict:
 
 def create_app() -> FastAPI:
     @contextlib.asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Revive exited wrapper containers, then reconcile statuses continuously.
         outcome = await asyncio.to_thread(revive_wrappers, get_registry())
         if outcome:
             print(f"[gateway] wrapper revive: {outcome}")
         sweeper = asyncio.create_task(run_sweeper(get_registry()))
 
-        async def _flush_metrics_forever():
+        async def _flush_metrics_forever() -> None:
             while True:
                 await asyncio.sleep(metrics_flush_interval())
                 get_metrics_store().flush()
@@ -84,7 +86,7 @@ def create_app() -> FastAPI:
         req: GenerateRequest,
         reg: Registry = Depends(get_registry),
         jobs: JobStore = Depends(get_job_store),
-    ):
+    ) -> dict[str, Any]:
         wrapper_id = req.wrapper_id or f"wrapper-{uuid.uuid4().hex[:8]}"
         secrets = req.secrets or None
         if secrets:
@@ -104,11 +106,11 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/jobs")
-    async def list_jobs(jobs: JobStore = Depends(get_job_store)):
+    async def list_jobs(jobs: JobStore = Depends(get_job_store)) -> dict[str, Any]:
         return {"jobs": [j.to_public() for j in jobs.list_all()]}
 
     @app.get("/jobs/{job_id}")
-    async def get_job(job_id: str, jobs: JobStore = Depends(get_job_store)):
+    async def get_job(job_id: str, jobs: JobStore = Depends(get_job_store)) -> dict[str, Any]:
         job = jobs.get(job_id)
         if not job:
             raise HTTPException(404, "Job not found")
@@ -133,7 +135,7 @@ def create_app() -> FastAPI:
         job_id: str,
         jobs: JobStore = Depends(get_job_store),
         reg: Registry = Depends(get_registry),
-    ):
+    ) -> dict[str, Any]:
         _cancel_or_raise(job_id, jobs, reg)
         return {"job_id": job_id, "cancelled": True}
 
@@ -142,14 +144,14 @@ def create_app() -> FastAPI:
         job_id: str,
         jobs: JobStore = Depends(get_job_store),
         reg: Registry = Depends(get_registry),
-    ):
+    ) -> RedirectResponse:
         """Hub-friendly cancel (browser form), mirroring /services/{id}/delete."""
         _cancel_or_raise(job_id, jobs, reg)
         return RedirectResponse(url="/", status_code=303)
 
     @app.get("/services/{wrapper_id}")
     @app.get("/services/{wrapper_id}/")
-    async def wrapper_index(wrapper_id: str, reg: Registry = Depends(get_registry)):
+    async def wrapper_index(wrapper_id: str, reg: Registry = Depends(get_registry)) -> dict[str, Any]:
         entry = reg.get(wrapper_id)
         if not entry:
             raise HTTPException(404, "Wrapper not found")
@@ -169,7 +171,9 @@ def create_app() -> FastAPI:
 
     # ---- Lifecycle: must be registered BEFORE the catch-all proxy below ----
     @app.delete("/services/{wrapper_id}")
-    async def delete_wrapper(wrapper_id: str, reg: Registry = Depends(get_registry)):
+    async def delete_wrapper(
+        wrapper_id: str, reg: Registry = Depends(get_registry)
+    ) -> dict[str, Any]:
         summary = await undeploy(wrapper_id, reg)
         if not summary.get("removed"):
             raise HTTPException(404, summary.get("reason", "Wrapper not found"))
@@ -178,7 +182,9 @@ def create_app() -> FastAPI:
         return {"wrapper_id": wrapper_id, "removed": True, "lifecycle": summary["lifecycle"]}
 
     @app.post("/services/{wrapper_id}/delete")
-    async def delete_wrapper_form(wrapper_id: str, reg: Registry = Depends(get_registry)):
+    async def delete_wrapper_form(
+        wrapper_id: str, reg: Registry = Depends(get_registry)
+    ) -> RedirectResponse:
         """Hub-friendly undeploy (browsers can't send DELETE from a form)."""
         await undeploy(wrapper_id, reg)
         return RedirectResponse(url="/", status_code=303)
@@ -194,7 +200,7 @@ def create_app() -> FastAPI:
         reg: Registry,
         jobs: JobStore,
         secrets: dict[str, str] | None = None,
-    ):
+    ) -> Job:
         entry = reg.get(wrapper_id)
         if not entry:
             raise HTTPException(404, "Wrapper not found")
@@ -224,7 +230,7 @@ def create_app() -> FastAPI:
         req: RegenerateRequest | None = None,
         reg: Registry = Depends(get_registry),
         jobs: JobStore = Depends(get_job_store),
-    ):
+    ) -> dict[str, Any]:
         job = _submit_regenerate(
             wrapper_id,
             req.description if req else None,
@@ -244,7 +250,7 @@ def create_app() -> FastAPI:
         wrapper_id: str,
         reg: Registry = Depends(get_registry),
         jobs: JobStore = Depends(get_job_store),
-    ):
+    ) -> RedirectResponse:
         """Hub-friendly regenerate (browser form), redirects back to the hub."""
         job = _submit_regenerate(wrapper_id, None, reg, jobs)
         message = f"Regeneration started as job {job.id} (wrapper {wrapper_id})."
@@ -255,7 +261,7 @@ def create_app() -> FastAPI:
         )
 
     # ---- MCP export: wrappers as MCP tools (Streamable HTTP, stateless) ----
-    async def _mcp_response(request: Request, wrapper_filter: str | None = None):
+    async def _mcp_response(request: Request, wrapper_filter: str | None = None) -> Response:
         body = await request.json()
         resp = await get_mcp().handle(body, wrapper_filter=wrapper_filter)
         if resp is None:  # notification
@@ -263,12 +269,12 @@ def create_app() -> FastAPI:
         return JSONResponse(resp)
 
     @app.post("/mcp")
-    async def mcp_gateway(request: Request):
+    async def mcp_gateway(request: Request) -> Response:
         """All wrappers as tools + meta tools (list_apis, generate_api, job_status)."""
         return await _mcp_response(request)
 
     @app.post("/services/{wrapper_id}/mcp")
-    async def mcp_wrapper(wrapper_id: str, request: Request):
+    async def mcp_wrapper(wrapper_id: str, request: Request) -> Response:
         """Single wrapper's endpoints as MCP tools (registered before the catch-all)."""
         return await _mcp_response(request, wrapper_filter=wrapper_id)
 
@@ -278,7 +284,7 @@ def create_app() -> FastAPI:
     @app.get("/services/{wrapper_id}/_logs", response_class=PlainTextResponse)
     async def wrapper_logs(
         wrapper_id: str, tail: int = 100, reg: Registry = Depends(get_registry)
-    ):
+    ) -> str:
         if not reg.get(wrapper_id):
             raise HTTPException(404, "Wrapper not found")
         from openapi_anything.docker.manager import DockerManager
@@ -289,7 +295,7 @@ def create_app() -> FastAPI:
             raise HTTPException(404, "Container not found (wrapper may run locally)")
 
     @app.get("/services/{wrapper_id}/_source", response_class=PlainTextResponse)
-    async def wrapper_source(wrapper_id: str, reg: Registry = Depends(get_registry)):
+    async def wrapper_source(wrapper_id: str, reg: Registry = Depends(get_registry)) -> str:
         entry = reg.get(wrapper_id)
         if not entry:
             raise HTTPException(404, "Wrapper not found")
@@ -311,7 +317,7 @@ def create_app() -> FastAPI:
         wrapper_id: str,
         path: str,
         request: Request,
-    ):
+    ) -> Response:
         import time
 
         start = time.monotonic()
@@ -329,15 +335,15 @@ def create_app() -> FastAPI:
         return response
 
     @app.get("/metrics")
-    async def metrics():
+    async def metrics() -> dict[str, Any]:
         return {"wrappers": get_metrics_store().all()}
 
     @app.get("/health")
-    async def health():
+    async def health() -> dict[str, Any]:
         return {"status": "ok", "wrappers": len(registry.list_all())}
 
     @app.get("/registry")
-    async def list_registry(reg: Registry = Depends(get_registry)):
+    async def list_registry(reg: Registry = Depends(get_registry)) -> dict[str, Any]:
         return {"wrappers": [e.__dict__ for e in reg.list_all()]}
 
     return app

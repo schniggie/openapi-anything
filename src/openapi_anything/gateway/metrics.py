@@ -10,7 +10,9 @@ totals survive gateway restarts. Not a monitoring system — a hub-friendly
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Dict
+from typing import Any, Dict, cast
+
+import redis
 
 _KEY_PREFIX = "openapi-anything:metrics:"
 
@@ -19,13 +21,11 @@ def metrics_flush_interval() -> float:
     return float(os.getenv("METRICS_FLUSH_INTERVAL", "30"))
 
 
-def _connect_redis():
+def _connect_redis() -> "redis.Redis | None":
     url = os.getenv("REDIS_URL", "")
     if not url:
         return None
     try:
-        import redis
-
         client = redis.Redis.from_url(url, socket_timeout=2, decode_responses=True)
         client.ping()
         return client
@@ -41,7 +41,7 @@ class _Record:
     latency_ms_total: float = 0.0
     last_used: str | None = None
 
-    def public(self) -> dict:
+    def public(self) -> dict[str, Any]:
         return {
             "requests": self.requests,
             "errors": self.errors,
@@ -53,7 +53,7 @@ class _Record:
 
 
 class MetricsStore:
-    def __init__(self, redis_client=None):
+    def __init__(self, redis_client: "redis.Redis | None" = None):
         self._redis = redis_client if redis_client is not None else _connect_redis()
         self._records: Dict[str, _Record] = {}
         self._load()
@@ -62,8 +62,11 @@ class MetricsStore:
         if self._redis is None:
             return
         try:
-            for key in self._redis.keys(_KEY_PREFIX + "*"):
-                raw = self._redis.hgetall(key)
+            # redis-py's command stubs return a pipeline-compatible Awaitable|T
+            # union even on a plain sync client; this store only uses sync redis.
+            keys = cast(list[str], self._redis.keys(_KEY_PREFIX + "*"))
+            for key in keys:
+                raw = cast(Dict[str, str], self._redis.hgetall(key))
                 wrapper_id = key[len(_KEY_PREFIX):]
                 self._records[wrapper_id] = _Record(
                     requests=int(raw.get("requests", 0)),
@@ -82,10 +85,10 @@ class MetricsStore:
         rec.latency_ms_total += latency_ms
         rec.last_used = datetime.now(UTC).isoformat()
 
-    def get(self, wrapper_id: str) -> dict:
+    def get(self, wrapper_id: str) -> dict[str, Any]:
         return self._records.get(wrapper_id, _Record()).public()
 
-    def all(self) -> dict[str, dict]:
+    def all(self) -> dict[str, dict[str, Any]]:
         return {wid: rec.public() for wid, rec in self._records.items()}
 
     def flush(self) -> None:

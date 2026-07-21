@@ -11,7 +11,7 @@ import os
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -23,9 +23,9 @@ class WrapperEntry:
     container_name: str
     status: str  # 'healthy', 'starting', 'error', 'degraded', 'unreachable'
     created_at: str
-    verification: dict | None = None  # post-deploy verification report (phase 7)
+    verification: dict[str, Any] | None = None  # post-deploy verification report (phase 7)
     wrapper_dir: str | None = None  # generated-code dir (serves /_source)
-    secret_names: list | None = None  # credential env var NAMES (values in SecretStore)
+    secret_names: list[str] | None = None  # credential env var NAMES (values in SecretStore)
 
 
 class Registry:

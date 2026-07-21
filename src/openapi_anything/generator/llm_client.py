@@ -13,7 +13,7 @@ budget (3000) and treats empty content as a parse failure so callers can retry/f
 
 import json
 import os
-from typing import Type, TypeVar
+from typing import Any, Type, TypeVar, cast
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel
@@ -55,14 +55,17 @@ class LLMClient:
         self, prompt: str, system: str = "", max_tokens: int = 2000, temperature: float = 0.2
     ) -> str:
         """Simple text completion."""
-        messages = []
+        messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
+        # model/messages are cast: this talks to a LiteLLM proxy that accepts
+        # arbitrary model names (GLM-5.x, Kimi, etc.), not just the openai SDK's
+        # narrow Literal union of OpenAI's own model names.
         resp = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
+            model=cast(Any, self.model),
+            messages=cast(Any, messages),
             max_tokens=max_tokens,
             temperature=temperature,
         )
@@ -70,7 +73,7 @@ class LLMClient:
 
     async def complete_json(
         self, prompt: str, system: str = "", max_tokens: int | None = None, temperature: float = 0.1
-    ) -> dict:
+    ) -> dict[str, Any]:
         """JSON-mode completion. Returns a parsed dict.
 
         Raises ``ValueError`` if the model returned empty/non-JSON content (callers
@@ -78,14 +81,14 @@ class LLMClient:
         models — see module docstring."""
         if max_tokens is None:
             max_tokens = int(os.getenv("LLM_JSON_MAX_TOKENS", str(JSON_MODE_MAX_TOKENS)))
-        messages = []
+        messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
         resp = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
+            model=cast(Any, self.model),
+            messages=cast(Any, messages),
             response_format={"type": "json_object"},
             max_tokens=max_tokens,
             temperature=temperature,
@@ -98,7 +101,7 @@ class LLMClient:
                 f"{resp.choices[0].finish_reason}); max_tokens too small?"
             )
         try:
-            return json.loads(content)
+            return cast(dict[str, Any], json.loads(content))
         except json.JSONDecodeError as exc:
             raise ValueError(f"json_object content not valid JSON: {exc}") from exc
 
@@ -107,17 +110,19 @@ class LLMClient:
         data = await self.complete_json(prompt, system=system)
         return response_model.model_validate(data)
 
-    async def complete_with_tools(self, prompt: str, tools: list[dict], system: str = "") -> dict:
+    async def complete_with_tools(
+        self, prompt: str, tools: list[dict[str, Any]], system: str = ""
+    ) -> dict[str, Any]:
         """Tool calling support for inspection / code execution phases."""
-        messages = []
+        messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
         resp = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            tools=tools,
+            model=cast(Any, self.model),
+            messages=cast(Any, messages),
+            tools=cast(Any, tools),
             tool_choice="auto",
             max_tokens=2000,
         )

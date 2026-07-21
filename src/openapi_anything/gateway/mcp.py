@@ -17,7 +17,7 @@ import os
 import re
 import time
 import uuid
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import httpx
 
@@ -36,7 +36,7 @@ def _slug(text: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^a-zA-Z0-9_]", "_", text)).strip("_")
 
 
-def _resolve_refs(schema: Any, components: dict) -> Any:
+def _resolve_refs(schema: Any, components: dict[str, Any]) -> Any:
     """Shallow-resolve local $refs so tool inputSchemas are self-contained."""
     if isinstance(schema, dict):
         ref = schema.get("$ref", "")
@@ -49,7 +49,7 @@ def _resolve_refs(schema: Any, components: dict) -> Any:
     return schema
 
 
-def _operations(spec: dict) -> list[dict]:
+def _operations(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """Flatten an OpenAPI spec into callable operations (skipping meta paths)."""
     components = spec.get("components", {}).get("schemas", {})
     ops = []
@@ -106,7 +106,7 @@ def _operations(spec: dict) -> list[dict]:
     return ops
 
 
-def openapi_to_tools(wrapper_id: str, target_desc: str, spec: dict) -> list[dict]:
+def openapi_to_tools(wrapper_id: str, target_desc: str, spec: dict[str, Any]) -> list[dict[str, Any]]:
     """MCP tool definitions for one wrapper's OpenAPI spec."""
     tools = []
     for op in _operations(spec):
@@ -194,11 +194,11 @@ class MCPGateway:
             lambda: httpx.AsyncClient(timeout=float(os.getenv("PROXY_TIMEOUT", "30")))
         )
         self._spec_ttl = float(os.getenv("MCP_SPEC_TTL", "30"))
-        self._spec_cache: dict[str, tuple[float, dict]] = {}
+        self._spec_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
     # ---- spec access -------------------------------------------------------
 
-    async def _spec(self, entry: WrapperEntry) -> dict | None:
+    async def _spec(self, entry: WrapperEntry) -> dict[str, Any] | None:
         cached = self._spec_cache.get(entry.id)
         if cached and time.monotonic() - cached[0] < self._spec_ttl:
             return cached[1]
@@ -206,7 +206,7 @@ class MCPGateway:
             async with self.client_factory() as client:
                 resp = await client.get(f"{entry.service_url}/openapi.json")
                 resp.raise_for_status()
-                spec = resp.json()
+                spec = cast(dict[str, Any], resp.json())
         except Exception as exc:
             print(f"[mcp] failed to fetch openapi.json for {entry.id}: {exc}")
             return None
@@ -223,7 +223,7 @@ class MCPGateway:
 
     # ---- JSON-RPC dispatch --------------------------------------------------
 
-    async def handle(self, body: dict, wrapper_filter: str | None = None) -> dict | None:
+    async def handle(self, body: dict[str, Any], wrapper_filter: str | None = None) -> dict[str, Any] | None:
         """Handle one JSON-RPC message. Returns None for notifications."""
         method = body.get("method", "")
         msg_id = body.get("id")
@@ -261,8 +261,8 @@ class MCPGateway:
             }
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
-    async def _list_tools(self, wrapper_filter: str | None) -> list[dict]:
-        tools: list[dict] = []
+    async def _list_tools(self, wrapper_filter: str | None) -> list[dict[str, Any]]:
+        tools: list[dict[str, Any]] = []
         for entry in self._entries(wrapper_filter):
             spec = await self._spec(entry)
             if spec:
@@ -274,11 +274,11 @@ class MCPGateway:
     # ---- tool execution ------------------------------------------------------
 
     @staticmethod
-    def _tool_result(payload: Any, is_error: bool = False) -> dict:
+    def _tool_result(payload: Any, is_error: bool = False) -> dict[str, Any]:
         text = payload if isinstance(payload, str) else json.dumps(payload, default=str)
         return {"content": [{"type": "text", "text": text}], "isError": is_error}
 
-    async def _call_tool(self, name: str, args: dict, wrapper_filter: str | None) -> dict:
+    async def _call_tool(self, name: str, args: dict[str, Any], wrapper_filter: str | None) -> dict[str, Any]:
         if wrapper_filter is None:
             meta = await self._call_meta(name, args)
             if meta is not None:
@@ -331,7 +331,7 @@ class MCPGateway:
             payload = resp.text
         return self._tool_result(payload, is_error=resp.status_code >= 400)
 
-    async def _call_meta(self, name: str, args: dict) -> dict | None:
+    async def _call_meta(self, name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         """Meta tools on the gateway-wide endpoint. None = not a meta tool."""
         if name == "list_apis":
             return self._tool_result(
@@ -385,10 +385,10 @@ class MCPGateway:
                  "hint": "poll with job_status"}
             )
         if name == "job_status":
-            job = self.jobs.get(args.get("job_id", ""))
-            if not job:
+            found_job = self.jobs.get(args.get("job_id", ""))
+            if not found_job:
                 return self._tool_result("Job not found", is_error=True)
-            return self._tool_result(job.to_public())
+            return self._tool_result(found_job.to_public())
         return None
 
 

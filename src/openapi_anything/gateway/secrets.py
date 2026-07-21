@@ -8,18 +8,18 @@ are stored unencrypted in redis; keep the stack on a trusted network.
 """
 
 import os
-from typing import Dict
+from typing import Any, Dict, cast
+
+import redis
 
 _KEY_PREFIX = "openapi-anything:secrets:"
 
 
-def _connect_redis():
+def _connect_redis() -> "redis.Redis | None":
     url = os.getenv("REDIS_URL", "")
     if not url:
         return None
     try:
-        import redis
-
         client = redis.Redis.from_url(url, socket_timeout=2, decode_responses=True)
         client.ping()
         return client
@@ -29,7 +29,7 @@ def _connect_redis():
 
 
 class SecretStore:
-    def __init__(self, redis_client=None):
+    def __init__(self, redis_client: "redis.Redis | None" = None):
         self._redis = redis_client if redis_client is not None else _connect_redis()
         self._memory: Dict[str, Dict[str, str]] = {}
 
@@ -38,16 +38,20 @@ class SecretStore:
             return
         if self._redis is not None:
             try:
-                self._redis.hset(_KEY_PREFIX + wrapper_id, mapping=secrets)
+                # cast: redis-py's hset stub wants a narrower Mapping value type
+                # than plain dict[str, str]; str satisfies it at runtime.
+                self._redis.hset(_KEY_PREFIX + wrapper_id, mapping=cast(Any, secrets))
                 return
             except Exception as exc:
                 print(f"[secrets] redis write failed ({exc}); keeping in memory")
         self._memory[wrapper_id] = dict(secrets)
 
     def get(self, wrapper_id: str) -> Dict[str, str]:
+        # redis-py's command stubs return a pipeline-compatible Awaitable|T union
+        # even on a plain sync client; this store only ever uses sync redis.
         if self._redis is not None:
             try:
-                return self._redis.hgetall(_KEY_PREFIX + wrapper_id)
+                return cast(Dict[str, str], self._redis.hgetall(_KEY_PREFIX + wrapper_id))
             except Exception as exc:
                 print(f"[secrets] redis read failed ({exc})")
         return dict(self._memory.get(wrapper_id, {}))

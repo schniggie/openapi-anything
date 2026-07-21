@@ -10,7 +10,7 @@ _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 class Verifier:
-    async def verify_wrapper(self, service_url: str, expected_endpoints: list) -> dict[str, Any]:
+    async def verify_wrapper(self, service_url: str, expected_endpoints: list[str]) -> dict[str, Any]:
         results: dict[str, Any] = {
             "service_url": service_url,
             "health": False,

@@ -20,9 +20,10 @@ class SearxNGClient:
         timeout: float | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ):
-        self.base_url = (
-            base_url or os.getenv("SEARXNG_BASE_URL", DEFAULT_SEARXNG_BASE_URL)
-        ).rstrip("/")
+        resolved_base = (
+            base_url if base_url else os.getenv("SEARXNG_BASE_URL", DEFAULT_SEARXNG_BASE_URL)
+        )
+        self.base_url = resolved_base.rstrip("/")
         self.timeout = timeout if timeout is not None else float(os.getenv("SEARXNG_TIMEOUT", "10"))
         self.default_max_results = int(os.getenv("SEARXNG_MAX_RESULTS", "5"))
         self._transport = transport  # injectable for tests
