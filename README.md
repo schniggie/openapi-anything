@@ -1,5 +1,7 @@
 # openapi-anything
 
+[![CI](https://github.com/schniggie/openapi-anything/actions/workflows/ci.yml/badge.svg)](https://github.com/schniggie/openapi-anything/actions/workflows/ci.yml)
+
 Agentic system that, given a natural language request describing "anything" to connect, writes/tests/deploys live code for a REST API wrapper around the target.
 
 ## Goal
