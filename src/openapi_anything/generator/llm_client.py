@@ -1,7 +1,8 @@
-"""LiteLLM client: OpenAI-compatible interface to GLM-5.1 via LiteLLM (key: REDACTED-KEY).
+"""LiteLLM client: OpenAI-compatible interface to GLM-5.x via LiteLLM.
 
 Provides text completion, JSON-mode completion, structured (Pydantic) output, and
-tool calling for the agentic pipeline.
+tool calling for the agentic pipeline. Requires LITELLM_API_KEY (no default —
+never hardcode a real key here; this file is public).
 
 Note on JSON mode: GLM-5.1 via this LiteLLM proxy accepts
 ``response_format={"type": "json_object"}`` and returns well-formed JSON *provided*
@@ -38,7 +39,7 @@ class LLMClient:
     def __init__(self, model: str | None = None):
         self.client = AsyncOpenAI(
             base_url=os.getenv("LITELLM_BASE_URL", "https://litellm.xn--8pr.xyz/v1"),
-            api_key=os.getenv("LITELLM_API_KEY", "REDACTED-KEY"),
+            api_key=os.getenv("LITELLM_API_KEY", ""),
             # A full json-mode design normally completes in ~20-60s; generous headroom
             # while still failing fast rather than hanging indefinitely.
             timeout=float(os.getenv("LLM_REQUEST_TIMEOUT", "120")),

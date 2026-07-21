@@ -8,7 +8,7 @@ Environment:
 - Python 3.12.8 (host), package `openapi-anything==0.1.0` installed (editable).
 - `docker` is a symlink → podman 5.8.2 (rootless). Socket live at
   `/run/user/1000/podman/podman.sock`.
-- LLM gateway reachable: `https://litellm.xn--8pr.xyz/v1`, key `REDACTED-KEY`,
+- LLM gateway reachable: `https://litellm.xn--8pr.xyz/v1`, key set via `LITELLM_API_KEY`,
   `GLM-5.1` model present (also reachable from inside the gateway container).
 - Live stack: `openapi-anything_gateway_1` (:8800), `openapi-anything_redis_1`
   (:6379), pre-deployed `wrapper-test-ls-wrapper` (:41949).

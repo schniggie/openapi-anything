@@ -119,7 +119,7 @@ values are read at runtime, not import time):
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `LITELLM_BASE_URL` | `https://litellm.xn--8pr.xyz/v1` | OpenAI-compatible LLM proxy |
-| `LITELLM_API_KEY` | `REDACTED-KEY` | Proxy API key |
+| `LITELLM_API_KEY` | *(required, no default)* | Proxy API key — set via `.env`, never commit it |
 | `LLM_MODEL` | `GLM-5.2` | Model id (must match proxy `/v1/models`) |
 | `LLM_REQUEST_TIMEOUT` | `120` | Per-request timeout (s) |
 | `LLM_JSON_MAX_TOKENS` | `8000` | JSON-mode budget — reasoning models burn hidden thinking tokens against it |

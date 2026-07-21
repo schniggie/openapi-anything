@@ -17,7 +17,7 @@ services:
       - GATEWAY_PROXY_HOST=host.containers.internal
       # --- LLM (LiteLLM proxy) ---
       - LITELLM_BASE_URL=${LITELLM_BASE_URL:-https://litellm.xn--8pr.xyz/v1}
-      - LITELLM_API_KEY=${LITELLM_API_KEY:-REDACTED-KEY}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:?set LITELLM_API_KEY in your environment or .env file}
       - LLM_MODEL=${LLM_MODEL:-GLM-5.2}
       - LLM_REQUEST_TIMEOUT=${LLM_REQUEST_TIMEOUT:-120}
       # Reasoning models burn hidden thinking tokens against this budget; keep generous
