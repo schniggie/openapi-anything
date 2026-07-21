@@ -32,6 +32,10 @@ services:
       # --- Gateway ---
       - PROXY_TIMEOUT=${PROXY_TIMEOUT:-30}
       - MCP_SPEC_TTL=${MCP_SPEC_TTL:-30}
+      # Opt-in gateway auth: unset = fully open (default). Set to require
+      # X-API-Key or HTTP Basic (any username, this as password) on admin
+      # routes. Deployed-wrapper traffic and /health always stay open.
+      - GATEWAY_API_KEY=${GATEWAY_API_KEY:-}
       # Job persistence: history + interrupted-job detection across restarts
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - JOBS_HISTORY_MAX=${JOBS_HISTORY_MAX:-200}

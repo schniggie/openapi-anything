@@ -113,6 +113,23 @@ auto-detects the Podman socket; no docker.sock mount needed.
 
 Each produces a distinct service with its own openapi.json usable by agents.
 
+## Auth
+
+Opt-in: unset `GATEWAY_API_KEY` (default) and the gateway is fully open, as before.
+Set it and **admin routes** require credentials — hub UI, generate/regenerate,
+jobs, delete, `/registry`, `/metrics`, `/services/{id}/_logs`, `/services/{id}/_source`,
+and the gateway-wide `/mcp` (which carries `generate_api`/`regenerate_api`).
+
+Two ways to authenticate:
+- `X-API-Key: <key>` header — for API/MCP clients (`curl`, agents).
+- HTTP Basic auth, any username, the key as the password — browsers prompt for
+  this natively when you open the hub; no login page needed.
+
+**Deployed-wrapper traffic is never gated**, even with a key set: the
+`/services/{id}/*` proxy and a wrapper's own `/services/{id}/mcp` stay open, so
+other systems/agents can use a generated API without holding the gateway's
+admin key. `/health` is also always open (container health probes).
+
 ## Configuration
 
 All knobs are environment variables (set them in `docker-compose.yml` or a `.env` file;
@@ -132,6 +149,7 @@ values are read at runtime, not import time):
 | `WRAPPER_OUTPUT_BASE` | `/tmp/openapi-anything-wrappers` | Generated wrapper code directory |
 | `PROXY_TIMEOUT` | `30` | Gateway → wrapper proxy timeout (s) |
 | `MCP_SPEC_TTL` | `30` | Seconds MCP tool schemas are cached per wrapper |
+| `GATEWAY_API_KEY` | unset (open) | Opt-in auth for admin routes — see `## Auth` below |
 | `REDIS_URL` | unset (in-memory) | Job persistence backend; compose sets `redis://redis:6379/0`. History survives restarts; interrupted jobs are marked failed |
 | `JOBS_HISTORY_MAX` | `200` | Terminal jobs kept in history before pruning oldest |
 | `METRICS_FLUSH_INTERVAL` | `30` | Seconds between metric flushes to redis |

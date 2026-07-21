@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from openapi_anything.service import generate_and_deploy, undeploy
 
+from .auth import require_auth
 from .health import run_sweeper
 from .hub_ui import router as hub_router
 from .jobs import Job, JobStore, get_job_store
@@ -69,7 +70,12 @@ def create_app() -> FastAPI:
     proxy = GatewayProxy()
 
     # Hub UI (HTML). Registered first so `GET /` and the form `POST /generate` exist.
-    app.include_router(hub_router, prefix="", tags=["hub"])
+    # Protected as a whole (admin surface) when GATEWAY_API_KEY is set — browsers
+    # cache HTTP Basic credentials and resend them automatically, so the hub's own
+    # forms (delete/regenerate/cancel) keep working once authenticated once.
+    app.include_router(
+        hub_router, prefix="", tags=["hub"], dependencies=[Depends(require_auth)]
+    )
 
     class GenerateRequest(BaseModel):
         description: str
@@ -81,7 +87,7 @@ def create_app() -> FastAPI:
     # ---- JSON API for agent clients (B1: distinct from the hub's form /generate) ----
     # Async by design: generation takes minutes, so the endpoint returns a job id
     # immediately and clients poll GET /jobs/{id} for the outcome.
-    @app.post("/api/generate", status_code=202)
+    @app.post("/api/generate", status_code=202, dependencies=[Depends(require_auth)])
     async def generate_wrapper_api(
         req: GenerateRequest,
         reg: Registry = Depends(get_registry),
@@ -105,11 +111,11 @@ def create_app() -> FastAPI:
             "poll": f"/jobs/{job.id}",
         }
 
-    @app.get("/jobs")
+    @app.get("/jobs", dependencies=[Depends(require_auth)])
     async def list_jobs(jobs: JobStore = Depends(get_job_store)) -> dict[str, Any]:
         return {"jobs": [j.to_public() for j in jobs.list_all()]}
 
-    @app.get("/jobs/{job_id}")
+    @app.get("/jobs/{job_id}", dependencies=[Depends(require_auth)])
     async def get_job(job_id: str, jobs: JobStore = Depends(get_job_store)) -> dict[str, Any]:
         job = jobs.get(job_id)
         if not job:
@@ -130,7 +136,7 @@ def create_app() -> FastAPI:
         except Exception:
             pass
 
-    @app.post("/jobs/{job_id}/cancel")
+    @app.post("/jobs/{job_id}/cancel", dependencies=[Depends(require_auth)])
     async def cancel_job(
         job_id: str,
         jobs: JobStore = Depends(get_job_store),
@@ -139,7 +145,7 @@ def create_app() -> FastAPI:
         _cancel_or_raise(job_id, jobs, reg)
         return {"job_id": job_id, "cancelled": True}
 
-    @app.post("/jobs/{job_id}/cancel/form")
+    @app.post("/jobs/{job_id}/cancel/form", dependencies=[Depends(require_auth)])
     async def cancel_job_form(
         job_id: str,
         jobs: JobStore = Depends(get_job_store),
@@ -149,8 +155,8 @@ def create_app() -> FastAPI:
         _cancel_or_raise(job_id, jobs, reg)
         return RedirectResponse(url="/", status_code=303)
 
-    @app.get("/services/{wrapper_id}")
-    @app.get("/services/{wrapper_id}/")
+    @app.get("/services/{wrapper_id}", dependencies=[Depends(require_auth)])
+    @app.get("/services/{wrapper_id}/", dependencies=[Depends(require_auth)])
     async def wrapper_index(wrapper_id: str, reg: Registry = Depends(get_registry)) -> dict[str, Any]:
         entry = reg.get(wrapper_id)
         if not entry:
@@ -170,7 +176,7 @@ def create_app() -> FastAPI:
         }
 
     # ---- Lifecycle: must be registered BEFORE the catch-all proxy below ----
-    @app.delete("/services/{wrapper_id}")
+    @app.delete("/services/{wrapper_id}", dependencies=[Depends(require_auth)])
     async def delete_wrapper(
         wrapper_id: str, reg: Registry = Depends(get_registry)
     ) -> dict[str, Any]:
@@ -181,7 +187,7 @@ def create_app() -> FastAPI:
         get_metrics_store().remove(wrapper_id)
         return {"wrapper_id": wrapper_id, "removed": True, "lifecycle": summary["lifecycle"]}
 
-    @app.post("/services/{wrapper_id}/delete")
+    @app.post("/services/{wrapper_id}/delete", dependencies=[Depends(require_auth)])
     async def delete_wrapper_form(
         wrapper_id: str, reg: Registry = Depends(get_registry)
     ) -> RedirectResponse:
@@ -224,7 +230,11 @@ def create_app() -> FastAPI:
             ),
         )
 
-    @app.post("/services/{wrapper_id}/_regenerate", status_code=202)
+    @app.post(
+        "/services/{wrapper_id}/_regenerate",
+        status_code=202,
+        dependencies=[Depends(require_auth)],
+    )
     async def regenerate_wrapper(
         wrapper_id: str,
         req: RegenerateRequest | None = None,
@@ -245,7 +255,9 @@ def create_app() -> FastAPI:
             "poll": f"/jobs/{job.id}",
         }
 
-    @app.post("/services/{wrapper_id}/_regenerate/form")
+    @app.post(
+        "/services/{wrapper_id}/_regenerate/form", dependencies=[Depends(require_auth)]
+    )
     async def regenerate_wrapper_form(
         wrapper_id: str,
         reg: Registry = Depends(get_registry),
@@ -268,20 +280,27 @@ def create_app() -> FastAPI:
             return Response(status_code=202)
         return JSONResponse(resp)
 
-    @app.post("/mcp")
+    @app.post("/mcp", dependencies=[Depends(require_auth)])
     async def mcp_gateway(request: Request) -> Response:
-        """All wrappers as tools + meta tools (list_apis, generate_api, job_status)."""
+        """All wrappers as tools + meta tools (list_apis, generate_api, job_status).
+        Protected: generate_api/regenerate_api are admin actions."""
         return await _mcp_response(request)
 
     @app.post("/services/{wrapper_id}/mcp")
     async def mcp_wrapper(wrapper_id: str, request: Request) -> Response:
-        """Single wrapper's endpoints as MCP tools (registered before the catch-all)."""
+        """Single wrapper's endpoints as MCP tools (registered before the catch-all).
+        Intentionally NOT auth-gated: deployed-wrapper traffic stays open (same
+        as the proxy below), no meta/admin tools live here."""
         return await _mcp_response(request, wrapper_filter=wrapper_id)
 
     # ---- Introspection: gateway-owned meta routes, registered BEFORE the ----
     # ---- catch-all so they are not proxied; the _ prefix keeps a wrapper's ----
     # ---- own /logs or /source endpoints reachable through the proxy. ----
-    @app.get("/services/{wrapper_id}/_logs", response_class=PlainTextResponse)
+    @app.get(
+        "/services/{wrapper_id}/_logs",
+        response_class=PlainTextResponse,
+        dependencies=[Depends(require_auth)],
+    )
     async def wrapper_logs(
         wrapper_id: str, tail: int = 100, reg: Registry = Depends(get_registry)
     ) -> str:
@@ -294,7 +313,11 @@ def create_app() -> FastAPI:
         except KeyError:
             raise HTTPException(404, "Container not found (wrapper may run locally)")
 
-    @app.get("/services/{wrapper_id}/_source", response_class=PlainTextResponse)
+    @app.get(
+        "/services/{wrapper_id}/_source",
+        response_class=PlainTextResponse,
+        dependencies=[Depends(require_auth)],
+    )
     async def wrapper_source(wrapper_id: str, reg: Registry = Depends(get_registry)) -> str:
         entry = reg.get(wrapper_id)
         if not entry:
@@ -334,15 +357,16 @@ def create_app() -> FastAPI:
         )
         return response
 
-    @app.get("/metrics")
+    @app.get("/metrics", dependencies=[Depends(require_auth)])
     async def metrics() -> dict[str, Any]:
         return {"wrappers": get_metrics_store().all()}
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
+        # Never gated: container health probes / orchestrators hit this.
         return {"status": "ok", "wrappers": len(registry.list_all())}
 
-    @app.get("/registry")
+    @app.get("/registry", dependencies=[Depends(require_auth)])
     async def list_registry(reg: Registry = Depends(get_registry)) -> dict[str, Any]:
         return {"wrappers": [e.__dict__ for e in reg.list_all()]}
 
